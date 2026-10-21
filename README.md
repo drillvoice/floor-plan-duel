@@ -38,9 +38,11 @@ Dodge is a quick dash in the direction you're moving, diagonals included; standi
 
 Power-ups flash a ring where they're about to appear, and a ring around each one shrinks as it expires:
 
-- **Gold** (lasts the round, stacks to 3): Swift Shot (faster bullets), Trigger Happy (faster firing).
-- **Blue** (temporary): Shield (absorbs the next hit, up to 10 s).
-- **Red** (curse on your opponent): Molasses (opponent moves 40% slower for 4 s).
+- **Gold** (lasts the round, stacks): Swift Shot (faster bullets), Long Shot (more range), Trigger Happy (faster firing), Fleet Foot (faster movement), Spare Dodge (a second dodge charge).
+- **Blue** (temporary): Shield (absorbs the next hit), Rapid Fire (fire twice as fast), Bouncer (bullets bounce off a wall once), Ghost (walk through walls), Lead Shot (aim predicts where your opponent is going).
+- **Red** (curse on your opponent): Molasses (slows them), Topsy-Turvy (reverses their controls), Big Target (makes them easier to hit).
+
+A label pops up saying what each one did, and the icons under each player's health show what's active.
 
 ## Map editor
 

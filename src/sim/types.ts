@@ -49,9 +49,18 @@ export type PowerUpCategory = 'upgrade' | 'buff' | 'curse';
 
 export const POWER_UP_CATEGORY: Record<PowerUpKind, PowerUpCategory> = {
   swiftShot: 'upgrade',
+  longShot: 'upgrade',
   triggerHappy: 'upgrade',
+  fleetFoot: 'upgrade',
+  spareDodge: 'upgrade',
   shield: 'buff',
+  rapidFire: 'buff',
+  bouncer: 'buff',
+  ghost: 'buff',
+  leadShot: 'buff',
   molasses: 'curse',
+  topsyTurvy: 'curse',
+  bigTarget: 'curse',
 };
 
 export interface PowerUp {
@@ -63,12 +72,9 @@ export interface PowerUp {
   lifespan: number;
 }
 
-export interface Effects {
-  swiftShot: number; // stacks, this round
-  triggerHappy: number; // stacks, this round
-  shield: number; // seconds left, 0 = none
-  molasses: number; // seconds left, 0 = none
-}
+// Per power-up: stacks for round-long upgrades, seconds left for the rest
+// (0 = none).
+export type Effects = Record<PowerUpKind, number>;
 
 export interface Dash {
   dir: Vec2;
@@ -83,7 +89,8 @@ export interface PlayerState {
   hits: number; // hits taken this round
   roundWins: number;
   fireCooldown: number;
-  dodgeCooldown: number;
+  dodgeCharges: number;
+  dodgeCooldown: number; // time until the next charge comes back
   dash: Dash | null;
   lineOfSight: boolean;
   effects: Effects;
@@ -97,6 +104,7 @@ export interface Bullet {
   age: number;
   lifetime: number;
   radius: number;
+  bounces: number; // wall bounces left (Bouncer)
 }
 
 export type Phase = 'countdown' | 'playing' | 'roundOver' | 'matchOver';
@@ -105,6 +113,7 @@ export type GameEvent =
   | { type: 'fire'; player: PlayerIndex; pos: Vec2 }
   | { type: 'hit'; player: PlayerIndex; pos: Vec2; hits: number }
   | { type: 'wallHit'; pos: Vec2 }
+  | { type: 'bounce'; pos: Vec2 }
   | { type: 'dodge'; player: PlayerIndex; from: Vec2; dir: Vec2 }
   | { type: 'roundStart'; round: number }
   | { type: 'roundEnd'; winner: PlayerIndex | null }

@@ -1,8 +1,9 @@
 // Draws game state onto a canvas. Reads state and events; never changes them.
 
 import { KEY_BINDINGS, type PlayerKeys } from '../config';
-import { fireCooldownFor } from '../sim/powerups';
+import { fireCooldownFor, hitRadiusFor, maxDodgeCharges, ON_OPPONENT, STACKING } from '../sim/powerups';
 import { dodgeDirection, suddenDeathMultiplier } from '../sim/step';
+import { POWER_UP_KINDS } from '../config';
 import { POWER_UP_CATEGORY, type GameEvent, type GameState, type PlayerIndex, type PowerUp, type PowerUpKind } from '../sim/types';
 import { CATEGORY_COLORS, drawPowerUpGlyph, powerUpColor } from './icons';
 import { drawLook } from './looks';
@@ -48,6 +49,23 @@ interface Callout {
 }
 
 const CALLOUT_LIFE = 1.4;
+
+// What a pickup says over the player who took it, and over the opponent for curses.
+const PICKUP_TEXT: Record<PowerUpKind, { self: string; victim?: string }> = {
+  swiftShot: { self: 'Faster bullets!' },
+  longShot: { self: 'Longer range!' },
+  triggerHappy: { self: 'Faster firing!' },
+  fleetFoot: { self: 'Faster feet!' },
+  spareDodge: { self: 'Extra dodge!' },
+  shield: { self: 'Shield up!' },
+  rapidFire: { self: 'Rapid fire!' },
+  bouncer: { self: 'Bouncy bullets!' },
+  ghost: { self: 'Ghost mode!' },
+  leadShot: { self: 'Sharpshooter!' },
+  molasses: { self: 'Slowed them down!', victim: 'Slowed!' },
+  topsyTurvy: { self: 'Flipped their controls!', victim: 'Controls flipped!' },
+  bigTarget: { self: 'Made them huge!', victim: 'Big target!' },
+};
 
 interface Trail {
   from: Vec2;
@@ -111,20 +129,22 @@ export class Renderer {
         case 'wallHit':
           this.burst(e.pos, COLORS.wall, 4, 2);
           break;
+        case 'bounce':
+          this.burst(e.pos, CATEGORY_COLORS.buff, 6, 3);
+          break;
         case 'dodge':
           this.pendingDash.push({ player: e.player, from: e.from });
           break;
         case 'pickup': {
           this.rings.push({ pos: e.pos, age: 0, color: powerUpColor(e.kind) });
-          const fx = state.players[e.player].effects;
+          const text = PICKUP_TEXT[e.kind];
           const color = powerUpColor(e.kind);
-          const times = (n: number) => (n > 1 ? ` ×${n}` : '');
-          if (e.kind === 'swiftShot') this.callout(e.player, `Faster bullets!${times(fx.swiftShot)}`, color);
-          else if (e.kind === 'triggerHappy') this.callout(e.player, `Faster firing!${times(fx.triggerHappy)}`, color);
-          else if (e.kind === 'shield') this.callout(e.player, 'Shield up!', color);
-          else if (e.kind === 'molasses') {
-            this.callout(e.player, 'Slowed them down!', color);
-            this.callout(e.player === 0 ? 1 : 0, 'Slowed!', color);
+          if (STACKING.has(e.kind)) {
+            const n = state.players[e.player].effects[e.kind];
+            this.callout(e.player, `${text.self}${n > 1 ? ` ×${n}` : ''}`, color);
+          } else {
+            this.callout(e.player, text.self, color);
+            if (ON_OPPONENT.has(e.kind) && text.victim) this.callout(e.player === 0 ? 1 : 0, text.victim, color);
           }
           break;
         }
@@ -210,7 +230,7 @@ export class Renderer {
     this.drawArena(state);
     this.drawTrails();
     for (const pu of state.powerUps) this.drawPowerUp(state, pu);
-    for (const b of state.bullets) this.drawBullet(state, b.owner, b.pos, b.radius, b.age, b.lifetime);
+    for (const b of state.bullets) this.drawBullet(state, b.owner, b.pos, b.radius, b.age, b.lifetime, b.bounces > 0);
     for (const i of [0, 1] as const) this.drawPlayer(state, i);
     this.drawEffects();
     this.drawCallouts(state);
@@ -341,7 +361,15 @@ export class Renderer {
     }
   }
 
-  private drawBullet(state: GameState, owner: PlayerIndex, pos: Vec2, radius: number, age: number, lifetime: number) {
+  private drawBullet(
+    state: GameState,
+    owner: PlayerIndex,
+    pos: Vec2,
+    radius: number,
+    age: number,
+    lifetime: number,
+    bouncy: boolean,
+  ) {
     const ctx = this.ctx;
     const fade = state.cfg.bullet.fadeTime;
     const alpha = Math.max(0, Math.min(1, (lifetime - age) / fade));
@@ -350,8 +378,9 @@ export class Renderer {
     ctx.beginPath();
     ctx.arc(p.x, p.y, radius * this.scale, 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = `rgba(255,255,255,${0.7 * alpha})`;
-    ctx.lineWidth = 1.5;
+    // Bouncy bullets get a blue rim.
+    ctx.strokeStyle = bouncy ? hexAlpha(CATEGORY_COLORS.buff, alpha) : `rgba(255,255,255,${0.7 * alpha})`;
+    ctx.lineWidth = bouncy ? 2.5 : 1.5;
     ctx.stroke();
   }
 
@@ -360,11 +389,25 @@ export class Renderer {
     const p = state.players[i];
     const cfg = state.cfg;
     const c = this.toScreen(p.pos);
-    const r = cfg.player.radius * this.scale;
+    // Drawn at hit size, so Big Target visibly grows.
+    const r = hitRadiusFor(p, cfg) * this.scale;
     const color = COLORS.players[i];
+    // A Ghost is see-through.
+    ctx.save();
+    if (p.effects.ghost > 0) ctx.globalAlpha = 0.4 + 0.15 * Math.sin(state.tick * 0.3);
 
-    // Chevron showing where a dodge would go, dim while it recharges.
-    const ready = p.dodgeCooldown <= 0;
+    // Chevron showing where a dodge would go, dim while it recharges, with a
+    // dot per charge when there's more than one.
+    const ready = p.dodgeCharges > 0;
+    const maxCharges = maxDodgeCharges(p.effects);
+    if (maxCharges > 1) {
+      for (let n = 0; n < maxCharges; n++) {
+        ctx.fillStyle = hexAlpha(color, n < p.dodgeCharges ? 0.9 : 0.2);
+        ctx.beginPath();
+        ctx.arc(c.x - (maxCharges - 1) * 5 + n * 10, c.y + r + 9, 3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
     const dodgeDir = dodgeDirection(p);
     const perp = { x: -dodgeDir.y, y: dodgeDir.x };
     const tip = this.toScreen(add(p.pos, scale(dodgeDir, cfg.player.radius + 0.42)));
@@ -409,7 +452,16 @@ export class Renderer {
       }
     }
 
-    drawLook(ctx, this.looks[i], c.x, c.y, r);
+    if (p.effects.topsyTurvy > 0) {
+      // Flipped controls: the player wobbles.
+      ctx.save();
+      ctx.translate(c.x, c.y);
+      ctx.rotate(Math.sin(state.tick * 0.35) * 0.5);
+      drawLook(ctx, this.looks[i] || '😵', 0, 0, r);
+      ctx.restore();
+    } else {
+      drawLook(ctx, this.looks[i], c.x, c.y, r);
+    }
 
     // Facing nub.
     const nub = this.toScreen(add(p.pos, scale(p.facing, cfg.player.radius * 0.95)));
@@ -424,6 +476,8 @@ export class Renderer {
       ctx.arc(c.x, c.y, r * 1.1, 0, Math.PI * 2);
       ctx.fill();
     }
+
+    ctx.restore();
 
     // Fire cooldown ring.
     if (p.fireCooldown > 0) {
@@ -521,13 +575,12 @@ export class Renderer {
         else ctx.stroke();
       }
       // Active power-ups, with stacks or seconds left.
-      const active: [PowerUpKind, string][] = [];
-      if (p.effects.swiftShot) active.push(['swiftShot', `×${p.effects.swiftShot}`]);
-      if (p.effects.triggerHappy) active.push(['triggerHappy', `×${p.effects.triggerHappy}`]);
-      if (p.effects.shield > 0) active.push(['shield', `${Math.ceil(p.effects.shield)}s`]);
-      if (p.effects.molasses > 0) active.push(['molasses', `${Math.ceil(p.effects.molasses)}s`]);
+      const active: [PowerUpKind, string][] = POWER_UP_KINDS.filter((k) => p.effects[k] > 0).map((k) => [
+        k,
+        STACKING.has(k) ? `×${p.effects[k]}` : `${Math.ceil(p.effects[k])}s`,
+      ]);
       active.forEach(([kind, label], n) => {
-        const px = x + dir * (68 + n * 52);
+        const px = x + dir * (68 + n * 44);
         ctx.fillStyle = CATEGORY_COLORS[POWER_UP_CATEGORY[kind]];
         ctx.beginPath();
         ctx.arc(px, 50, 9, 0, Math.PI * 2);

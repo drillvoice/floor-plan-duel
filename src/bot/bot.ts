@@ -4,7 +4,7 @@
 
 import type { InputSource } from '../input/types';
 import { moveCircle } from '../sim/arena';
-import { moveSpeedFor } from '../sim/powerups';
+import { hitRadiusFor, moveSpeedFor } from '../sim/powerups';
 import { nextRandom, randomRange } from '../sim/rng';
 import type { Bullet, GameState, PlayerIndex, PlayerInput } from '../sim/types';
 import { dist, distSegmentSegment, dot, leftOf, len, normalize, rightOf, scale, sub, add, type Vec2 } from '../sim/vec';
@@ -47,15 +47,15 @@ export class BotPlayer implements InputSource {
     input.shoot = self.lineOfSight;
 
     const threat = this.findThreat(state, me);
-    if (threat) {
-      this.evade(state, me, threat, input);
-      return input;
+    if (threat) this.evade(state, me, threat, input);
+    else {
+      const target = this.powerUpTarget(state, me);
+      if (target) input.move = this.navigate(state, me, target);
+      else if (!self.lineOfSight) input.move = this.navigate(state, me, state.players[me === 0 ? 1 : 0].pos);
+      else input.move = this.fight(state, me);
     }
-
-    const target = this.powerUpTarget(state, me);
-    if (target) input.move = this.navigate(state, me, target);
-    else if (!self.lineOfSight) input.move = this.navigate(state, me, state.players[me === 0 ? 1 : 0].pos);
-    else input.move = this.fight(state, me);
+    // Under Topsy-Turvy the sim reverses our movement, so push the other way.
+    if (self.effects.topsyTurvy > 0) input.move = scale(input.move, -1);
     return input;
   }
 
@@ -64,7 +64,7 @@ export class BotPlayer implements InputSource {
     const cfg = state.cfg;
     const diff = cfg.bot.difficulty[this.difficulty];
     const self = state.players[me];
-    const hitRadius = cfg.player.radius + cfg.bullet.radius + cfg.bot.threatMargin;
+    const hitRadius = hitRadiusFor(self, cfg) + cfg.bullet.radius + cfg.bot.threatMargin;
     let best: Bullet | null = null;
     let bestT = Infinity;
     for (const b of state.bullets) {
@@ -107,7 +107,7 @@ export class BotPlayer implements InputSource {
     if (dot(sub(self.pos, b.pos), side) < 0) side = scale(side, -1);
     input.move = side;
 
-    if (self.dash || self.dodgeCooldown > 0) return;
+    if (self.dash || self.dodgeCharges === 0) return;
     // A dodge goes the way we move, so try dashing to either side of the
     // bullet's line and take whichever ends furthest off it (walls can stop
     // a dash short), as long as it actually gets clear.
@@ -117,7 +117,7 @@ export class BotPlayer implements InputSource {
       return { dir, miss: missDistance(end) };
     });
     options.sort((a, b) => b.miss - a.miss);
-    if (options[0].miss > cfg.player.radius + cfg.bullet.radius) {
+    if (options[0].miss > hitRadiusFor(self, cfg) + cfg.bullet.radius) {
       input.move = options[0].dir;
       input.dodge = true;
     }

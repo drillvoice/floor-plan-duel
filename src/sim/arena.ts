@@ -22,6 +22,18 @@ export function buildArena(map: MapData, cfg: Config): Arena {
   };
 }
 
+// The arena as a Ghost sees it: only the outer boundary (built first, so the
+// first four walls). Cached per arena.
+const ghostArenas = new WeakMap<Arena, Arena>();
+export function ghostArena(arena: Arena): Arena {
+  let g = ghostArenas.get(arena);
+  if (!g) {
+    g = { ...arena, walls: arena.walls.slice(0, 4) };
+    ghostArenas.set(arena, g);
+  }
+  return g;
+}
+
 // Push a circle out of any walls it overlaps. Returns true if it touched one.
 export function resolveCircle(pos: Vec2, radius: number, arena: Arena, cfg: Config): boolean {
   const minDist = radius + cfg.map.wallThickness / 2;

@@ -74,18 +74,18 @@ Power-ups appear at random spots, linger for a random time, and are either round
 | Power-up | Kind | Effect | Duration | In MVP |
 | --- | --- | --- | --- | --- |
 | Swift Shot | Round-long | Bullet speed +25% (range grows with it), stacks to 3 | Round | Yes |
-| Long Shot | Round-long | Bullet lifetime +40% (more range, same speed), stacks to 3 | Round | No |
+| Long Shot | Round-long | Bullet lifetime +40% (more range, same speed), stacks to 3 | Round | v2 |
 | Trigger Happy | Round-long | Fire cooldown −20%, stacks to 3 | Round | Yes |
-| Fleet Foot | Round-long | Move speed +15%, stacks to 3 | Round | No |
-| Spare Dodge | Round-long | One extra dodge charge | Round | No |
+| Fleet Foot | Round-long | Move speed +15%, stacks to 3 | Round | v2 |
+| Spare Dodge | Round-long | One extra dodge charge | Round | v2 |
 | Shield | Temporary | Absorbs the next hit | Until hit or 10 s | Yes |
-| Rapid Fire | Temporary | Fire cooldown halved | 5 s | No |
-| Bouncer | Temporary | Bullets bounce off walls once | 8 s | No |
-| Ghost | Temporary | Walk through walls (not out of the map) | 4 s | No |
-| Lead Shot | Temporary | Auto-aim predicts the opponent's movement | 6 s | No |
+| Rapid Fire | Temporary | Fire cooldown halved | 5 s | v2 |
+| Bouncer | Temporary | Bullets bounce off walls once | 8 s | v2 |
+| Ghost | Temporary | Walk through walls (not out of the map) | 4 s | v2 |
+| Lead Shot | Temporary | Auto-aim predicts the opponent's movement | 6 s | v2 |
 | Molasses | Curse | Opponent move speed −40% | 4 s | Yes |
-| Topsy-Turvy | Curse | Opponent's movement controls reversed | 3 s | No |
-| Big Target | Curse | Opponent grows 50% bigger (easier to hit) | 5 s | No |
+| Topsy-Turvy | Curse | Opponent's movement controls reversed | 3 s | v2 |
+| Big Target | Curse | Opponent grows 50% bigger (easier to hit) | 5 s | v2 |
 
 If round-long stacking proves to snowball, try spawning power-ups slightly closer to whoever is losing.
 

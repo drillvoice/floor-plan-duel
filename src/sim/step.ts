@@ -5,10 +5,21 @@
 // reads nothing outside its arguments.
 
 import { CONFIG, type Config } from '../config';
-import { buildArena, hasLineOfSight, moveCircle, resolveCircle } from './arena';
-import { bulletSpeedFactor, fireCooldownFor, moveSpeedFor, noEffects, scheduleNextPowerUp, updatePowerUps } from './powerups';
+import { buildArena, ghostArena, hasLineOfSight, moveCircle, resolveCircle } from './arena';
+import {
+  aimLeadFor,
+  bulletLifetimeFor,
+  bulletSpeedFactor,
+  fireCooldownFor,
+  hitRadiusFor,
+  maxDodgeCharges,
+  moveSpeedFor,
+  noEffects,
+  scheduleNextPowerUp,
+  updatePowerUps,
+} from './powerups';
 import type { Bullet, GameState, MapData, PlayerIndex, PlayerInput, PlayerState } from './types';
-import { add, dist, distPointSegment, dot, len, normalize, scale, sub, type Vec2 } from './vec';
+import { add, closestPointOnSegment, dist, distPointSegment, dot, len, normalize, scale, sub, type Vec2 } from './vec';
 
 const EPS = 1e-9;
 
@@ -45,6 +56,7 @@ function newPlayer(): PlayerState {
     hits: 0,
     roundWins: 0,
     fireCooldown: 0,
+    dodgeCharges: 1,
     dodgeCooldown: 0,
     dash: null,
     lineOfSight: false,
@@ -71,6 +83,7 @@ function startRound(state: GameState): void {
     p.vel = { x: 0, y: 0 };
     p.hits = 0;
     p.fireCooldown = 0;
+    p.dodgeCharges = 1;
     p.dodgeCooldown = 0;
     p.dash = null;
     p.lastMove = { x: 0, y: 0 };
@@ -135,32 +148,49 @@ function updatePlayer(state: GameState, i: PlayerIndex, input: PlayerInput, dt: 
   const cfg = state.cfg;
   const p = state.players[i];
   p.fireCooldown = Math.max(0, p.fireCooldown - dt);
-  p.dodgeCooldown = Math.max(0, p.dodgeCooldown - dt);
 
-  if (len(input.move) > EPS) p.lastMove = normalize(input.move);
-  if (!p.dash && p.dodgeCooldown <= EPS && input.dodge) {
+  // Dodge charges come back one at a time.
+  const maxCharges = maxDodgeCharges(p.effects);
+  if (p.dodgeCharges < maxCharges) {
+    p.dodgeCooldown -= dt;
+    if (p.dodgeCooldown <= EPS) {
+      p.dodgeCharges++;
+      p.dodgeCooldown = p.dodgeCharges < maxCharges ? cfg.dodge.cooldown : 0;
+    }
+  } else {
+    p.dodgeCooldown = 0;
+  }
+
+  // Topsy-Turvy reverses movement, and so the direction of dodges too.
+  const moveInput = p.effects.topsyTurvy > EPS ? scale(input.move, -1) : input.move;
+  if (len(moveInput) > EPS) p.lastMove = normalize(moveInput);
+  if (!p.dash && p.dodgeCharges > 0 && input.dodge) {
     const dir = dodgeDirection(p);
     p.dash = { dir, remaining: cfg.dodge.duration };
-    p.dodgeCooldown = cfg.dodge.cooldown;
+    p.dodgeCharges--;
+    if (p.dodgeCooldown <= EPS) p.dodgeCooldown = cfg.dodge.cooldown;
     state.events.push({ type: 'dodge', player: i, from: { ...p.pos }, dir });
   }
+
+  // A Ghost only bumps into the outer walls.
+  const arena = p.effects.ghost > EPS ? ghostArena(state.arena) : state.arena;
 
   const before = { ...p.pos };
   if (p.dash) {
     // Movement input is ignored while dashing; hitting a wall ends the dash.
     const t = Math.min(dt, p.dash.remaining);
     const speed = cfg.dodge.distance / cfg.dodge.duration;
-    const hitWall = moveCircle(p.pos, scale(p.dash.dir, speed * t), cfg.player.radius, state.arena, cfg);
+    const hitWall = moveCircle(p.pos, scale(p.dash.dir, speed * t), cfg.player.radius, arena, cfg);
     p.dash.remaining -= t;
     if (hitWall || p.dash.remaining <= EPS) p.dash = null;
     p.vel = { x: 0, y: 0 };
     return;
   }
 
-  let move = input.move;
+  let move = moveInput;
   const l = len(move);
   if (l > 1) move = scale(move, 1 / l); // diagonals aren't faster
-  moveCircle(p.pos, scale(move, moveSpeedFor(p.effects, state) * dt), cfg.player.radius, state.arena, cfg);
+  moveCircle(p.pos, scale(move, moveSpeedFor(p.effects, state) * dt), cfg.player.radius, arena, cfg);
   p.vel = scale(sub(p.pos, before), 1 / dt);
 }
 
@@ -213,7 +243,7 @@ function tryFire(state: GameState, i: PlayerIndex, input: PlayerInput): void {
   if (!input.shoot || p.fireCooldown > EPS) return;
   const opp = state.players[i === 0 ? 1 : 0];
   const speed = cfg.bullet.speed * bulletSpeedFactor(p.effects, state) * suddenDeathMultiplier(state);
-  let dir = normalize(sub(aimPoint(p.pos, opp, speed, cfg.bullet.aimLead), p.pos));
+  let dir = normalize(sub(aimPoint(p.pos, opp, speed, aimLeadFor(p.effects, cfg)), p.pos));
   if (dir.x === 0 && dir.y === 0) dir = p.facing;
   const start = add(p.pos, scale(dir, cfg.player.radius + cfg.bullet.radius));
   const bullet: Bullet = {
@@ -222,8 +252,9 @@ function tryFire(state: GameState, i: PlayerIndex, input: PlayerInput): void {
     pos: start,
     vel: scale(dir, speed),
     age: 0,
-    lifetime: cfg.bullet.lifetime,
+    lifetime: bulletLifetimeFor(p.effects, state),
     radius: cfg.bullet.radius,
+    bounces: p.effects.bouncer > EPS ? cfg.powerUps.bouncer.bounces : 0,
   };
   state.bullets.push(bullet);
   p.fireCooldown = fireCooldownFor(p.effects, state);
@@ -237,13 +268,14 @@ function updateBullets(state: GameState, dt: number): void {
   for (const b of state.bullets) {
     const target = state.players[b.owner === 0 ? 1 : 0];
     const targetIndex: PlayerIndex = b.owner === 0 ? 1 : 0;
-    const travel = scale(b.vel, dt);
     // Sub-step along the path so fast bullets can't skip past walls or players.
-    const steps = Math.max(1, Math.ceil(len(travel) / 0.1));
+    const steps = Math.max(1, Math.ceil((len(b.vel) * dt) / 0.1));
+    const hitRadius = hitRadiusFor(target, cfg) + b.radius;
     let alive = true;
     for (let s = 0; s < steps && alive; s++) {
-      b.pos = add(b.pos, scale(travel, 1 / steps));
-      if (dist(b.pos, target.pos) < cfg.player.radius + b.radius) {
+      b.pos = add(b.pos, scale(b.vel, dt / steps));
+      const wall = state.arena.walls.find((w) => distPointSegment(b.pos, w.a, w.b) < b.radius + wallClear);
+      if (dist(b.pos, target.pos) < hitRadius) {
         if (target.effects.shield > EPS) {
           target.effects.shield = 0;
           state.events.push({ type: 'shieldBlock', player: targetIndex, pos: { ...b.pos } });
@@ -252,7 +284,16 @@ function updateBullets(state: GameState, dt: number): void {
           state.events.push({ type: 'hit', player: targetIndex, pos: { ...b.pos }, hits: target.hits });
         }
         alive = false;
-      } else if (state.arena.walls.some((w) => distPointSegment(b.pos, w.a, w.b) < b.radius + wallClear)) {
+      } else if (wall && b.bounces > 0) {
+        // Reflect off the wall's surface (its end caps are round).
+        const c = closestPointOnSegment(b.pos, wall.a, wall.b);
+        let n = normalize(sub(b.pos, c));
+        if (n.x === 0 && n.y === 0) n = normalize({ x: wall.a.y - wall.b.y, y: wall.b.x - wall.a.x });
+        if (dot(b.vel, n) < 0) b.vel = sub(b.vel, scale(n, 2 * dot(b.vel, n)));
+        b.pos = add(c, scale(n, b.radius + wallClear + 0.01));
+        b.bounces--;
+        state.events.push({ type: 'bounce', pos: { ...b.pos } });
+      } else if (wall) {
         state.events.push({ type: 'wallHit', pos: { ...b.pos } });
         alive = false;
       }

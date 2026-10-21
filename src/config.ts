@@ -1,7 +1,26 @@
 // Every tunable number lives here. Distances are in units (a player is 1 unit
 // across), times in seconds, speeds in units per second.
 
-export type PowerUpKind = 'swiftShot' | 'triggerHappy' | 'shield' | 'molasses';
+export const POWER_UP_KINDS = [
+  // Round-long upgrades (stack).
+  'swiftShot',
+  'longShot',
+  'triggerHappy',
+  'fleetFoot',
+  'spareDodge',
+  // Temporary buffs.
+  'shield',
+  'rapidFire',
+  'bouncer',
+  'ghost',
+  'leadShot',
+  // Curses on the opponent.
+  'molasses',
+  'topsyTurvy',
+  'bigTarget',
+] as const;
+
+export type PowerUpKind = (typeof POWER_UP_KINDS)[number];
 
 export const CONFIG = {
   tickRate: 60,
@@ -63,12 +82,27 @@ export const CONFIG = {
     telegraph: 0.75,
     radius: 0.45,
     // Kinds that can spawn, with equal chance.
-    pool: ['swiftShot', 'triggerHappy', 'shield', 'molasses'] as PowerUpKind[],
+    pool: [...POWER_UP_KINDS] as PowerUpKind[],
     swiftShot: { bulletSpeedBonus: 0.25, maxStacks: 3 },
+    // More range at the same speed.
+    longShot: { lifetimeBonus: 0.4, maxStacks: 3 },
     // Each stack multiplies the fire cooldown by (1 - reduction).
     triggerHappy: { cooldownReduction: 0.2, maxStacks: 3 },
+    fleetFoot: { moveSpeedBonus: 0.15, maxStacks: 3 },
+    // Each stack is one extra dodge charge.
+    spareDodge: { maxStacks: 1 },
     shield: { duration: 10 },
+    rapidFire: { cooldownMultiplier: 0.5, duration: 5 },
+    bouncer: { bounces: 1, duration: 8 },
+    // Walk through inner walls (never out of the map).
+    ghost: { duration: 4 },
+    // Auto-aim fully predicts the opponent's movement.
+    leadShot: { aimLead: 1, duration: 6 },
     molasses: { speedMultiplier: 0.6, duration: 4 },
+    // Opponent's movement (and so their dodges) reversed.
+    topsyTurvy: { duration: 3 },
+    // Opponent is easier to hit; walls still treat them as normal size.
+    bigTarget: { sizeMultiplier: 1.5, duration: 5 },
   },
 
   bot: {

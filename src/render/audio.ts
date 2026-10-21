@@ -50,6 +50,9 @@ export class Sound {
           this.tone(1400, 0.25, 'triangle', 0.25, 0.7);
           this.tone(2100, 0.2, 'sine', 0.12, 0.8);
           break;
+        case 'bounce':
+          this.tone(880, 0.08, 'triangle', 0.12, 1.6);
+          break;
         case 'wallHit':
           this.noiseBurst(0.03, 2500, 0.05);
           break;

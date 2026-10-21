@@ -1,0 +1,12 @@
+{
+  "name": "Floor Plan Duel",
+  "short_name": "Duel",
+  "description": "A top-down 1v1 shooter for two people sharing one keyboard.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#16181f",
+  "theme_color": "#16181f",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}

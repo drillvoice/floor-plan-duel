@@ -107,8 +107,8 @@ export class HotseatLobby {
     const keysHint = (side: 0 | 1) => {
       const k = side === 0 ? KEY_BINDINGS.p1 : KEY_BINDINGS.p2;
       return side === 0
-        ? `W A S D · ${keyName(k.dodge)} dodge · ${keyName(k.shoot)} shoot`
-        : `Arrows · ${keyName(k.dodge)} dodge · ${keyName(k.shoot)} shoot`;
+        ? `W A S D · ${keyName(k.shoot)} shoot · ${keyName(k.dodge)} dodge`
+        : `Arrows · ${keyName(k.shoot)} shoot · ${keyName(k.dodge)} dodge`;
     };
     const fighter = (p: HotseatPlayer, side: 0 | 1) =>
       el('div', { className: `fighter side-${side}` }, [

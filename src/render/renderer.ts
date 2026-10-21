@@ -24,6 +24,11 @@ const TIMER_AMBER = '#ffb020';
 const TIMER_RED = '#ff4d4d';
 const HUD_HEIGHT = 64;
 const MARGIN = 24;
+// Each player's status sits in a column beside the arena. The arena leaves at
+// least this much room; on wide screens the columns take whatever is spare.
+const SIDE_MIN = 150;
+const SIDE_MAX = 260;
+const SIDE_GAP = 16;
 
 interface Particle {
   pos: Vec2;
@@ -67,6 +72,24 @@ const PICKUP_TEXT: Record<PowerUpKind, { self: string; victim?: string }> = {
   bigTarget: { self: 'Made them huge!', victim: 'Big target!' },
 };
 
+// Short power-up names for the side columns. Curses are named as the
+// player carrying them feels them.
+const HUD_NAMES: Record<PowerUpKind, string> = {
+  swiftShot: 'Fast bullets',
+  longShot: 'Long range',
+  triggerHappy: 'Fire rate',
+  fleetFoot: 'Speed',
+  spareDodge: 'Extra dodge',
+  shield: 'Shield',
+  rapidFire: 'Rapid fire',
+  bouncer: 'Bouncy',
+  ghost: 'Ghost',
+  leadShot: 'Sharpshooter',
+  molasses: 'Slowed',
+  topsyTurvy: 'Flipped',
+  bigTarget: 'Big target',
+};
+
 interface Trail {
   from: Vec2;
   to: Vec2;
@@ -80,6 +103,7 @@ export class Renderer {
   private height = 0;
   private scale = 1;
   private origin = { x: 0, y: 0 };
+  private sideW = SIDE_MIN;
   private hitFlash = [0, 0];
   private trails: Trail[] = [];
   private pendingDash: { player: PlayerIndex; from: Vec2 }[] = [];
@@ -207,13 +231,14 @@ export class Renderer {
 
   private layout(state: GameState): void {
     const { width: aw, height: ah } = state.arena;
-    const availW = this.width - MARGIN * 2;
+    const availW = this.width - (SIDE_MIN + SIDE_GAP * 2) * 2;
     const availH = this.height - HUD_HEIGHT - MARGIN * 2;
     this.scale = Math.max(4, Math.min(availW / aw, availH / ah));
     this.origin = {
       x: (this.width - aw * this.scale) / 2,
       y: HUD_HEIGHT + MARGIN + (availH - ah * this.scale) / 2,
     };
+    this.sideW = Math.max(SIDE_MIN * 0.75, Math.min(SIDE_MAX, this.origin.x - SIDE_GAP * 2));
   }
 
   private toScreen(p: Vec2): Vec2 {
@@ -548,56 +573,7 @@ export class Renderer {
     const ctx = this.ctx;
     const cfg = state.cfg;
     ctx.textBaseline = 'middle';
-    for (const i of [0, 1] as const) {
-      const p = state.players[i];
-      const left = i === 0;
-      const x = left ? MARGIN : this.width - MARGIN;
-      const dir = left ? 1 : -1;
-      ctx.fillStyle = COLORS.players[i];
-      ctx.font = '700 22px system-ui, sans-serif';
-      ctx.textAlign = left ? 'left' : 'right';
-      const name = this.names[i];
-      ctx.fillText(name, x, 24);
-      // Health pips, after the name.
-      const pipsAt = Math.max(52, ctx.measureText(name).width + 22);
-      for (let h = 0; h < cfg.round.hitsToLose; h++) {
-        const alive = h < cfg.round.hitsToLose - p.hits;
-        const px = x + dir * (pipsAt + h * 22);
-        ctx.fillStyle = alive ? COLORS.players[i] : 'rgba(255,255,255,0.12)';
-        ctx.beginPath();
-        ctx.arc(px, 24, 8, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      // Round wins.
-      for (let w = 0; w < cfg.round.roundsToWin; w++) {
-        const px = x + dir * (6 + w * 16);
-        ctx.strokeStyle = COLORS.text;
-        ctx.fillStyle = COLORS.text;
-        ctx.lineWidth = 1.5;
-        ctx.beginPath();
-        ctx.arc(px, 50, 5, 0, Math.PI * 2);
-        if (w < p.roundWins) ctx.fill();
-        else ctx.stroke();
-      }
-      // Active power-ups, with stacks or seconds left.
-      const active: [PowerUpKind, string][] = POWER_UP_KINDS.filter((k) => p.effects[k] > 0).map((k) => [
-        k,
-        STACKING.has(k) ? `×${p.effects[k]}` : `${Math.ceil(p.effects[k])}s`,
-      ]);
-      active.forEach(([kind, label], n) => {
-        const px = x + dir * (68 + n * 44);
-        ctx.fillStyle = CATEGORY_COLORS[POWER_UP_CATEGORY[kind]];
-        ctx.beginPath();
-        ctx.arc(px, 50, 9, 0, Math.PI * 2);
-        ctx.fill();
-        drawPowerUpGlyph(ctx, kind, px, 50, 11);
-        ctx.fillStyle = COLORS.text;
-        ctx.font = '600 12px system-ui, sans-serif';
-        // Labels sit on the side away from the screen edge.
-        ctx.textAlign = left ? 'left' : 'right';
-        ctx.fillText(label, px + dir * 12, 51);
-      });
-    }
+    for (const i of [0, 1] as const) this.drawSidePanel(state, i);
 
     // Round timer: a number, plus a bar across the top of the arena that
     // shrinks and turns amber, then red, as time runs out.
@@ -623,6 +599,116 @@ export class Renderer {
     ctx.font = '500 13px system-ui, sans-serif';
     ctx.fillStyle = COLORS.muted;
     ctx.fillText(`Round ${state.roundIndex + 1}`, this.width / 2, 50);
+  }
+
+  // One player's status in the column beside the arena, sized to read at a
+  // glance: name, health, round wins, then active power-ups. P2's column is
+  // a mirror image of P1's.
+  private drawSidePanel(state: GameState, i: PlayerIndex): void {
+    const ctx = this.ctx;
+    const cfg = state.cfg;
+    const p = state.players[i];
+    const left = i === 0;
+    const dir = left ? 1 : -1;
+    const w = this.sideW;
+    const cx = left ? this.origin.x / 2 : this.width - this.origin.x / 2;
+    const outer = cx - (dir * w) / 2;
+    const u = Math.min(1.8, w / 140);
+    let y = this.origin.y;
+
+    // Look and name, shrunk to fit long hotseat names.
+    const r = 22 * u;
+    ctx.fillStyle = COLORS.players[i];
+    ctx.beginPath();
+    ctx.arc(cx, y + r, r, 0, Math.PI * 2);
+    ctx.fill();
+    if (this.looks[i]) drawLook(ctx, this.looks[i], cx, y + r, r);
+    y += r * 2 + 22 * u;
+    const name = this.names[i];
+    let size = 30 * u;
+    ctx.font = `800 ${size}px system-ui, sans-serif`;
+    const nameW = ctx.measureText(name).width;
+    if (nameW > w) size *= w / nameW;
+    ctx.font = `800 ${size}px system-ui, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.fillText(name, cx, y);
+    y += 30 * u;
+
+    // Health: big pips, lost ones hollow.
+    const hits = cfg.round.hitsToLose;
+    const pipGap = 8 * u;
+    const pipD = Math.min(36 * u, (w - pipGap * (hits - 1)) / hits);
+    const rowW = hits * pipD + (hits - 1) * pipGap;
+    for (let h = 0; h < hits; h++) {
+      const alive = h < hits - p.hits;
+      const px = cx - rowW / 2 + pipD / 2 + h * (pipD + pipGap);
+      ctx.beginPath();
+      ctx.arc(px, y + pipD / 2, pipD / 2 - 1.5, 0, Math.PI * 2);
+      if (alive) {
+        ctx.fillStyle = COLORS.players[i];
+        ctx.fill();
+      } else {
+        ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+        ctx.lineWidth = 3;
+        ctx.stroke();
+      }
+    }
+    y += pipD + 22 * u;
+
+    // Round wins.
+    const wins = cfg.round.roundsToWin;
+    const winR = 8 * u;
+    const winGap = 10 * u;
+    const winsW = wins * winR * 2 + (wins - 1) * winGap;
+    ctx.strokeStyle = COLORS.text;
+    ctx.fillStyle = COLORS.text;
+    ctx.lineWidth = 2;
+    for (let n = 0; n < wins; n++) {
+      ctx.beginPath();
+      ctx.arc(cx - winsW / 2 + winR + n * (winR * 2 + winGap), y, winR, 0, Math.PI * 2);
+      if (n < p.roundWins) ctx.fill();
+      else ctx.stroke();
+    }
+    y += winR + 12 * u;
+    ctx.fillStyle = COLORS.muted;
+    ctx.font = `500 ${12 * u}px system-ui, sans-serif`;
+    ctx.fillText('rounds', cx, y);
+    y += 30 * u;
+
+    // Active power-ups, one per row: icon at the outer edge, then stacks or
+    // seconds left with the name beneath. Timed ones drain a ring.
+    const iconR = 17 * u;
+    const rowH = iconR * 2 + 12 * u;
+    const iconX = outer + dir * iconR;
+    const textX = iconX + dir * (iconR + 10 * u);
+    for (const kind of POWER_UP_KINDS) {
+      const amount = p.effects[kind];
+      if (amount <= 0) continue;
+      if (y + rowH > this.height) break;
+      const iy = y + iconR;
+      const color = CATEGORY_COLORS[POWER_UP_CATEGORY[kind]];
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(iconX, iy, iconR, 0, Math.PI * 2);
+      ctx.fill();
+      drawPowerUpGlyph(ctx, kind, iconX, iy, iconR * 1.2);
+      const duration = (cfg.powerUps[kind] as { duration?: number }).duration;
+      if (!STACKING.has(kind) && duration) {
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 3 * u;
+        ctx.beginPath();
+        ctx.arc(iconX, iy, iconR + 4 * u, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, amount / duration));
+        ctx.stroke();
+      }
+      ctx.textAlign = left ? 'left' : 'right';
+      ctx.fillStyle = COLORS.text;
+      ctx.font = `800 ${20 * u}px system-ui, sans-serif`;
+      ctx.fillText(STACKING.has(kind) ? `×${amount}` : `${Math.ceil(amount)}s`, textX, iy - 7 * u);
+      ctx.fillStyle = COLORS.muted;
+      ctx.font = `500 ${12 * u}px system-ui, sans-serif`;
+      ctx.fillText(HUD_NAMES[kind], textX, iy + 11 * u);
+      y += rowH;
+    }
   }
 
   private label(i: PlayerIndex): string {
@@ -765,8 +851,11 @@ export class Renderer {
     ctx.fillText('move', moveX, y0 + 2 * k + gap + 12);
     const ax = cx + 40;
     const step = k + 18;
-    cap(keys.dodge, ax + step / 2, y0 + k + gap, 'dodge');
-    cap(keys.shoot, ax + step * 1.5, y0 + k + gap, 'shoot');
+    // In keyboard order: shoot is under the index finger, so it's on the
+    // left for P1 (F G) and on the right for P2 (. /).
+    const shootFirst = i === 0;
+    cap(keys.shoot, ax + step * (shootFirst ? 0.5 : 1.5), y0 + k + gap, 'shoot');
+    cap(keys.dodge, ax + step * (shootFirst ? 1.5 : 0.5), y0 + k + gap, 'dodge');
     ctx.globalAlpha = 1;
   }
 }

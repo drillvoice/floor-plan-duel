@@ -31,8 +31,8 @@ On the title screen:
 | Action | Player 1 | Player 2 |
 | --- | --- | --- |
 | Move | W A S D | Arrow keys |
-| Dodge | F | , (comma) |
-| Shoot (hold) | G | . (full stop) |
+| Shoot (hold) | F | / (slash) |
+| Dodge | G | . (full stop) |
 | Pause | Esc | Esc |
 
 Dodge is a quick dash in the direction you're moving, diagonals included; standing still, it goes the way you last moved. It has a 1.2 s cooldown: the little arrow beside your player shows where a dodge will go, and dims while it recharges. After 90 s a round goes to sudden death and bullets speed up every 5 s.

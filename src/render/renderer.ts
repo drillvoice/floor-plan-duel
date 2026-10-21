@@ -39,6 +39,16 @@ interface Ring {
   color: string;
 }
 
+// Short text that pops up over a player, e.g. "Faster bullets!".
+interface Callout {
+  player: PlayerIndex;
+  text: string;
+  color: string;
+  age: number;
+}
+
+const CALLOUT_LIFE = 1.4;
+
 interface Trail {
   from: Vec2;
   to: Vec2;
@@ -57,6 +67,7 @@ export class Renderer {
   private pendingDash: { player: PlayerIndex; from: Vec2 }[] = [];
   private particles: Particle[] = [];
   private rings: Ring[] = [];
+  private callouts: Callout[] = [];
   private shake = 0;
   private screenFlash = 0;
   private suddenDeathBanner = 0;
@@ -93,6 +104,7 @@ export class Renderer {
           break;
         }
         case 'shieldBlock':
+          this.callout(e.player, 'Blocked!', CATEGORY_COLORS.buff);
           this.shake = Math.max(this.shake, 0.3);
           this.burst(e.pos, CATEGORY_COLORS.buff, 12, 4);
           break;
@@ -102,13 +114,25 @@ export class Renderer {
         case 'dodge':
           this.pendingDash.push({ player: e.player, from: e.from });
           break;
-        case 'pickup':
+        case 'pickup': {
           this.rings.push({ pos: e.pos, age: 0, color: powerUpColor(e.kind) });
+          const fx = state.players[e.player].effects;
+          const color = powerUpColor(e.kind);
+          const times = (n: number) => (n > 1 ? ` ×${n}` : '');
+          if (e.kind === 'swiftShot') this.callout(e.player, `Faster bullets!${times(fx.swiftShot)}`, color);
+          else if (e.kind === 'triggerHappy') this.callout(e.player, `Faster firing!${times(fx.triggerHappy)}`, color);
+          else if (e.kind === 'shield') this.callout(e.player, 'Shield up!', color);
+          else if (e.kind === 'molasses') {
+            this.callout(e.player, 'Slowed them down!', color);
+            this.callout(e.player === 0 ? 1 : 0, 'Slowed!', color);
+          }
           break;
+        }
         case 'suddenDeath':
           this.suddenDeathBanner = 2;
           break;
         case 'roundStart':
+          this.callouts = [];
           this.trails = [];
           this.particles = [];
           break;
@@ -135,6 +159,8 @@ export class Renderer {
     this.particles = this.particles.filter((p) => p.age < p.life);
     for (const r of this.rings) r.age += dt;
     this.rings = this.rings.filter((r) => r.age < 0.4);
+    for (const c of this.callouts) c.age += dt;
+    this.callouts = this.callouts.filter((c) => c.age < CALLOUT_LIFE);
     this.shake = Math.max(0, this.shake - dt * 2.5);
     this.screenFlash = Math.max(0, this.screenFlash - dt);
     this.suddenDeathBanner = Math.max(0, this.suddenDeathBanner - dt);
@@ -187,6 +213,7 @@ export class Renderer {
     for (const b of state.bullets) this.drawBullet(state, b.owner, b.pos, b.radius, b.age, b.lifetime);
     for (const i of [0, 1] as const) this.drawPlayer(state, i);
     this.drawEffects();
+    this.drawCallouts(state);
     ctx.restore();
     if (this.screenFlash > 0) {
       ctx.fillStyle = `rgba(255,255,255,${this.screenFlash * 0.8})`;
@@ -239,6 +266,40 @@ export class Renderer {
       ctx.lineTo(b.x, b.y);
     }
     ctx.stroke();
+  }
+
+  private callout(player: PlayerIndex, text: string, color: string): void {
+    this.callouts.push({ player, text, color, age: 0 });
+  }
+
+  // Callouts follow their player, rise and fade; several for one player stack.
+  private drawCallouts(state: GameState): void {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.font = '800 17px system-ui, sans-serif';
+    ctx.lineJoin = 'round';
+    for (const i of [0, 1] as const) {
+      const mine = this.callouts.filter((c) => c.player === i);
+      mine.forEach((c, n) => {
+        const t = c.age / CALLOUT_LIFE;
+        const pop = Math.min(1, c.age / 0.12); // quick scale-in
+        const at = this.toScreen(state.players[i].pos);
+        const y = at.y - state.cfg.player.radius * this.scale - 20 - t * 26 - (mine.length - 1 - n) * 22;
+        ctx.globalAlpha = t < 0.7 ? 1 : 1 - (t - 0.7) / 0.3;
+        ctx.save();
+        ctx.translate(at.x, y);
+        ctx.scale(pop, pop);
+        ctx.strokeStyle = 'rgba(10,11,15,0.9)';
+        ctx.lineWidth = 5;
+        ctx.strokeText(c.text, 0, 0);
+        ctx.fillStyle = c.color;
+        ctx.fillText(c.text, 0, 0);
+        ctx.restore();
+      });
+    }
+    ctx.restore();
   }
 
   private drawEffects(): void {

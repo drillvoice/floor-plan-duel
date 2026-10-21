@@ -24,7 +24,7 @@ Both players share one keyboard, split left and right so hands don't collide. Di
 | Dodge | G | . (full stop) |
 | Pause | Esc | Esc |
 
-Either player slot can be switched to the bot from the start screen. A Gamepad API mapping and mobile touch controls (left joystick, three right-thumb buttons) come later; the input layer is built so adding them doesn't touch game logic.
+Either player slot can be switched to the bot from the start screen, or played from a phone (see Phone controllers below). A Gamepad API mapping comes later; the input layer is built so adding it doesn't touch game logic.
 
 Open question: some laptop keyboards drop keys when several are held at once (ghosting). Test this combo early on your own laptop and remap if needed.
 
@@ -175,6 +175,7 @@ The MVP proves one thing: dodging slow auto-aimed bullets on a shared laptop is 
 
 **v2** — the rest of the power-up set (done), photo/line-drawing import, a few more built-in maps, a "make it a LOT more fun" polish pass, and:
 
+- **Phone controllers (done):** players join a room on their phones (QR code or a four-letter code) and get a joystick, Dodge and Shoot. The desktop runs the game; phones only send their controls over a WebRTC data channel, introduced by the public PeerJS server, so the site stays static. Messages are unreliable and unordered for low latency: each one is a full snapshot of the controls, and one-off presses are counters, so a lost message never loses a press. The room logic lives in `src/net/protocol.ts`, with no networking, and is unit tested. Groundwork for 4 players.
 - **Hotseat mode (done):** still 1v1, but for a group taking turns. Players enter their names, the loser of each match swaps out for the next person in the queue, and a scoreboard tracks who's playing and everyone's wins.
 - **Photo looks:** use a picture of your face inside your player circle, alongside the icon looks.
 

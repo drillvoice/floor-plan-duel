@@ -3,7 +3,7 @@ import { CONFIG, KEY_BINDINGS } from './config';
 import { Keyboard, KeyboardPlayer } from './input/keyboard';
 import type { InputSource } from './input/types';
 import { lastEditedMap, listSavedMaps } from './maps/storage';
-import { THE_FLAT } from './maps/theFlat';
+import { BUILT_IN_MAPS, copyOfBuiltIn } from './maps/builtin';
 import { Sound } from './render/audio';
 import { cycleLook, loadLooks, saveLooks } from './render/looks';
 import { Music } from './render/music';
@@ -98,9 +98,9 @@ renderer.looks = looks;
 
 let screen: Screen = { kind: 'title' };
 
-// Maps to pick from on the title screen: the built-in one, then saved ones.
+// Maps to pick from on the title screen: the built-in ones, then saved ones.
 let mapIndex = 0;
-const availableMaps = (): MapData[] => [THE_FLAT, ...listSavedMaps()];
+const availableMaps = (): MapData[] => [...BUILT_IN_MAPS, ...listSavedMaps()];
 function selectedMap(): MapData {
   const maps = availableMaps();
   return maps[mapIndex % maps.length];
@@ -204,9 +204,11 @@ keyboard.onPress((code) => {
     else if (code === 'Tab') mapIndex = (mapIndex + 1) % availableMaps().length;
     else if (code === 'KeyE') {
       const map = selectedMap();
-      // A saved map opens as itself; from the built-in one, reopen the map
+      // A saved map opens as itself; from a built-in one, reopen the map
       // edited last, or start from a copy.
-      openEditor(map !== THE_FLAT ? map : (lastEditedMap() ?? { ...structuredClone(THE_FLAT), name: 'My flat' }));
+      openEditor(
+        !BUILT_IN_MAPS.includes(map) ? map : (lastEditedMap() ?? copyOfBuiltIn(map)),
+      );
     }
     return;
   }

@@ -30,6 +30,7 @@ export interface MapData {
   height: number;
   walls: Wall[];
   spawns: [Vec2, Vec2];
+  dark?: boolean; // lights out: only what's near a player or glowing is visible
 }
 
 // A map prepared for play: includes the outer boundary walls.
@@ -39,6 +40,7 @@ export interface Arena {
   height: number;
   walls: Wall[];
   spawns: [Vec2, Vec2];
+  dark: boolean;
   grid: Grid;
 }
 

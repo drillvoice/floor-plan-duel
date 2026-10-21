@@ -6,12 +6,13 @@
 // to set each bot separately, --seed S, --json for machine-readable output,
 // and --set path=value (repeatable) to try a config change without editing
 // config.ts, e.g. --set bullet.aimLead=0 --set fire.cooldown=0.5
+// --map NAME picks a built-in map by name (default The Flat).
 // --modifiers plays every round under a random round modifier and adds a
 // breakdown by modifier.
 
 import { BotPlayer, type Difficulty } from '../src/bot/bot';
 import { CONFIG, type Config } from '../src/config';
-import { THE_FLAT } from '../src/maps/theFlat';
+import { BUILT_IN_MAPS } from '../src/maps/builtin';
 import { createGame, spawnFor, step } from '../src/sim/step';
 import { MODIFIERS, type ModifierId } from '../src/sim/modifiers';
 import type { PlayerIndex, PowerUpKind } from '../src/sim/types';
@@ -22,6 +23,9 @@ function arg(name: string, fallback: string): string {
 }
 
 const matches = Number(arg('matches', '100'));
+const mapName = arg('map', BUILT_IN_MAPS[0].name);
+const map = BUILT_IN_MAPS.find((m) => m.name.toLowerCase() === mapName.toLowerCase());
+if (!map) throw new Error(`Unknown map: ${mapName}. Built-in maps: ${BUILT_IN_MAPS.map((m) => m.name).join(', ')}`);
 const difficulty = arg('difficulty', 'normal') as Difficulty;
 const d1 = arg('p1', difficulty) as Difficulty;
 const d2 = arg('p2', difficulty) as Difficulty;
@@ -68,7 +72,7 @@ const started = Date.now();
 
 for (let m = 0; m < matches; m++) {
   const seed = baseSeed * 100003 + m;
-  const state = createGame(THE_FLAT, seed, cfg);
+  const state = createGame(map, seed, cfg);
   const bots = [new BotPlayer(d1, seed * 2 + 1), new BotPlayer(d2, seed * 2 + 2)] as const;
   const newRound = (): RoundRecord => ({ modifier: state.modifier, winner: null, winnerSpawn: null, length: 0, suddenDeath: false, hits: 0, shots: 0, dodges: 0, shieldBlocks: 0, pickups: [] });
   let current = newRound();
@@ -85,7 +89,7 @@ for (let m = 0; m < matches; m++) {
       else if (e.type === 'roundStart') current.modifier = e.modifier;
       else if (e.type === 'roundEnd') {
         current.winner = e.winner;
-        current.winnerSpawn = e.winner === null ? null : THE_FLAT.spawns.findIndex((sp) => {
+        current.winnerSpawn = e.winner === null ? null : map.spawns.findIndex((sp) => {
           const at = spawnFor(state, e.winner!);
           return sp.x === at.x && sp.y === at.y;
         });
@@ -128,6 +132,7 @@ const modifierStats = cfg.modifiers.enabled
 const spawnWins = [0, 1].map((s) => decided.filter((r) => r.winnerSpawn === s).length / Math.max(1, decided.length));
 const summary = {
   matches,
+  map: map.name,
   difficulty: { p1: d1, p2: d2 },
   seed: baseSeed,
   unfinished,
@@ -155,7 +160,7 @@ if (asJson) {
 } else {
   const ok = (good: boolean) => (good ? '✓' : '✗');
   const lines = [
-    `Floor Plan Duel sim: ${matches} matches, P1 ${d1} vs P2 ${d2}, seed ${baseSeed}`,
+    `Floor Plan Duel sim: ${matches} matches on ${map.name}, P1 ${d1} vs P2 ${d2}, seed ${baseSeed}`,
     ...(overrides.length ? [`  config overrides: ${overrides.join(', ')}`] : []),
     `  ran ${(summary.simSeconds / 60).toFixed(0)} min of play in ${summary.wallSeconds.toFixed(1)} s`,
     '',

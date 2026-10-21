@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import { CONFIG } from '../src/config';
+import { BUILT_IN_MAPS, copyOfBuiltIn, LIGHTS_OUT } from '../src/maps/builtin';
 import { THE_FLAT } from '../src/maps/theFlat';
+import { buildArena } from '../src/sim/arena';
+import { createGame, step } from '../src/sim/step';
+import { NO_INPUT } from '../src/sim/types';
 import { autoSpawns, parseMapJson, validateMap } from '../src/maps/validate';
 import type { MapData } from '../src/sim/types';
 import { dist } from '../src/sim/vec';
@@ -68,5 +73,40 @@ describe('import', () => {
     expect(() => parseMapJson('{"width": 24}')).toThrow();
     expect(() => parseMapJson(JSON.stringify({ ...THE_FLAT, spawns: [THE_FLAT.spawns[0]] }))).toThrow(/two spawn/);
     expect(() => parseMapJson('not json')).toThrow();
+  });
+});
+
+describe('built-in maps', () => {
+  it.each(BUILT_IN_MAPS.map((m) => [m.name, m] as const))('%s is valid and has room for power-ups', (_name, map) => {
+    expect(validateMap(map)).toEqual([]);
+    const g = buildArena(map, CONFIG).grid;
+    const roomy = g.clearance.filter((c, i) => g.open[i] && c >= CONFIG.powerUps.minWallDistance).length;
+    expect(roomy).toBeGreaterThan(20);
+    // Power-ups do turn up.
+    const s = createGame(map, 4);
+    let telegraphs = 0;
+    for (let t = 0; t < 60 * 20; t++) {
+      step(s, [NO_INPUT, NO_INPUT]);
+      telegraphs += s.events.filter((e) => e.type === 'powerUpTelegraph').length;
+    }
+    expect(telegraphs).toBeGreaterThan(2);
+  });
+
+  it('have distinct names', () => {
+    expect(new Set(BUILT_IN_MAPS.map((m) => m.name)).size).toBe(BUILT_IN_MAPS.length);
+  });
+
+  it('copies for the editor get their own name and keep Lights Out dark', () => {
+    expect(copyOfBuiltIn(THE_FLAT).name).toBe('My flat');
+    const copy = copyOfBuiltIn(LIGHTS_OUT);
+    expect(copy.dark).toBe(true);
+    copy.walls.push({ a: { x: 1, y: 1 }, b: { x: 2, y: 2 } });
+    expect(LIGHTS_OUT.walls).toHaveLength(copy.walls.length - 1);
+  });
+
+  it('a dark map stays dark through export and import', () => {
+    expect(parseMapJson(JSON.stringify(LIGHTS_OUT)).dark).toBe(true);
+    expect(parseMapJson(JSON.stringify(THE_FLAT)).dark).toBeUndefined();
+    expect(buildArena(LIGHTS_OUT, CONFIG).dark).toBe(true);
   });
 });

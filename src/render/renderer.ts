@@ -117,6 +117,12 @@ export function modifierReel(t: number): { step: number; landed: boolean } {
 
 const MODIFIER_COLOR = '#ffd23f';
 
+// Lights Out maps: how far each light reaches (units) and how bright it is.
+const DARKNESS = 'rgba(4,5,9,0.95)';
+const PLAYER_LIGHT = 3.2;
+const FLASH_LIGHT = 4;
+const FLASH_LIFE = 0.15;
+
 interface Trail {
   from: Vec2;
   to: Vec2;
@@ -137,6 +143,8 @@ export class Renderer {
   private pendingDash: { player: PlayerIndex; from: Vec2 }[] = [];
   private particles: Particle[] = [];
   private rings: Ring[] = [];
+  private flashes: { pos: Vec2; age: number }[] = []; // muzzle flashes and impacts, for Lights Out
+  private darkLayer: HTMLCanvasElement | null = null;
   private callouts: Callout[] = [];
   private shake = 0;
   private screenFlash = 0;
@@ -190,8 +198,12 @@ export class Renderer {
           this.shake = Math.max(this.shake, 0.3);
           this.burst(e.pos, CATEGORY_COLORS.buff, 12, 4);
           break;
+        case 'fire':
+          this.flashes.push({ pos: e.pos, age: 0 });
+          break;
         case 'wallHit':
           this.burst(e.pos, COLORS.wall, 4, 2);
+          this.flashes.push({ pos: e.pos, age: FLASH_LIFE / 2 });
           break;
         case 'bounce':
           this.burst(e.pos, CATEGORY_COLORS.buff, 6, 3);
@@ -216,6 +228,7 @@ export class Renderer {
           this.suddenDeathBanner = 2;
           break;
         case 'roundStart':
+          this.flashes = [];
           this.callouts = [];
           this.trails = [];
           this.particles = [];
@@ -242,6 +255,8 @@ export class Renderer {
       p.vel = scale(p.vel, Math.pow(0.02, dt));
     }
     this.particles = this.particles.filter((p) => p.age < p.life);
+    for (const f of this.flashes) f.age += dt;
+    this.flashes = this.flashes.filter((f) => f.age < FLASH_LIFE);
     for (const r of this.rings) r.age += dt;
     this.rings = this.rings.filter((r) => r.age < 0.4);
     for (const c of this.callouts) c.age += dt;
@@ -298,6 +313,7 @@ export class Renderer {
     for (const pu of state.powerUps) this.drawPowerUp(state, pu);
     for (const b of state.bullets) this.drawBullet(state, b.owner, b.pos, b.radius, b.age, b.lifetime, b.bounces > 0);
     for (const i of [0, 1] as const) this.drawPlayer(state, i);
+    if (state.arena.dark) this.drawDarkness(state);
     this.drawEffects();
     this.drawCallouts(state);
     ctx.restore();
@@ -352,6 +368,45 @@ export class Renderer {
       ctx.lineTo(b.x, b.y);
     }
     ctx.stroke();
+  }
+
+  // Lights Out: cover the arena in darkness, with soft holes where there's
+  // light: around each player, on bullets and power-ups, and briefly at
+  // muzzle flashes and impacts. Drawn on a layer of its own so the holes
+  // don't cut into the arena underneath.
+  private drawDarkness(state: GameState): void {
+    const main = this.ctx;
+    const layer = (this.darkLayer ??= document.createElement('canvas'));
+    if (layer.width !== this.canvas.width || layer.height !== this.canvas.height) {
+      layer.width = this.canvas.width;
+      layer.height = this.canvas.height;
+    }
+    const ctx = layer.getContext('2d')!;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, layer.width, layer.height);
+    ctx.setTransform(main.getTransform()); // includes screen shake
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = DARKNESS;
+    ctx.fillRect(this.origin.x, this.origin.y, state.arena.width * this.scale, state.arena.height * this.scale);
+    ctx.globalCompositeOperation = 'destination-out';
+    const light = (pos: Vec2, reach: number, strength: number) => {
+      const c = this.toScreen(pos);
+      const r = reach * this.scale;
+      const grad = ctx.createRadialGradient(c.x, c.y, 0, c.x, c.y, r);
+      grad.addColorStop(0, `rgba(0,0,0,${strength})`);
+      grad.addColorStop(0.5, `rgba(0,0,0,${strength * 0.75})`);
+      grad.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(c.x - r, c.y - r, r * 2, r * 2);
+    };
+    for (const p of state.players) light(p.pos, PLAYER_LIGHT, 1);
+    for (const b of state.bullets) light(b.pos, 1.1, 0.9);
+    for (const pu of state.powerUps) light(pu.pos, pu.telegraph > 0 ? 1.4 : 1.2, 0.8);
+    for (const f of this.flashes) light(f.pos, FLASH_LIGHT * (1 - f.age / FLASH_LIFE), 0.9);
+    main.save();
+    main.setTransform(1, 0, 0, 1, 0, 0);
+    main.drawImage(layer, 0, 0);
+    main.restore();
   }
 
   private callout(player: PlayerIndex, text: string, color: string): void {

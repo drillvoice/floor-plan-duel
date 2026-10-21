@@ -26,6 +26,7 @@ On the title screen:
 - **H** opens hotseat mode, for a group taking turns (see below).
 - **Tab** changes the map; **E** opens the map editor (on a saved map, or the one you edited last).
 - **M** mutes all sound; **N** turns the music on or off (also works mid-match). The music speeds up as the round goes on and gets busier near the end.
+- **B** toggles full screen (also works mid-match), or use the button in the top-right corner of the menus. Esc leaves full screen too.
 - The key caps light up while held: use this to check your keyboard can register everyone's keys at once.
 
 | Action | Player 1 | Player 2 |

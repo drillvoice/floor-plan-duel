@@ -779,7 +779,7 @@ export class Renderer {
     ctx.fillText('Floor Plan Duel', cx, head);
     ctx.font = '500 20px system-ui, sans-serif';
     ctx.fillStyle = COLORS.muted;
-    ctx.fillText('Press Enter to start  ·  M to mute  ·  N for music on/off', cx, head + 52);
+    ctx.fillText('Press Enter to start  ·  B for full screen  ·  M to mute  ·  N for music', cx, head + 52);
     ctx.fillStyle = COLORS.text;
     ctx.font = '600 17px system-ui, sans-serif';
     ctx.fillText(`Map: ${mapName}`, cx, head + 92);

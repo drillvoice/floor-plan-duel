@@ -62,8 +62,8 @@ export const KEY_BINDINGS = {
     left: 'KeyA',
     right: 'KeyD',
     dodgeLeft: 'KeyF',
-    dodgeRight: 'KeyG',
-    shoot: 'KeyH',
+    shoot: 'KeyG',
+    dodgeRight: 'KeyH',
   },
   p2: {
     up: 'ArrowUp',
@@ -71,8 +71,8 @@ export const KEY_BINDINGS = {
     left: 'ArrowLeft',
     right: 'ArrowRight',
     dodgeLeft: 'Comma',
-    dodgeRight: 'Period',
-    shoot: 'Slash',
+    shoot: 'Period',
+    dodgeRight: 'Slash',
   },
   pause: 'Escape',
 };

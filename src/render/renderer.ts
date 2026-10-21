@@ -379,8 +379,8 @@ export class Renderer {
     const ax = cx + 40;
     const step = k + 18;
     cap(keys.dodgeLeft, ax, y0 + k + gap, 'dodge L');
-    cap(keys.dodgeRight, ax + step, y0 + k + gap, 'dodge R');
-    cap(keys.shoot, ax + 2 * step, y0 + k + gap, 'shoot');
+    cap(keys.shoot, ax + step, y0 + k + gap, 'shoot');
+    cap(keys.dodgeRight, ax + 2 * step, y0 + k + gap, 'dodge R');
   }
 }
 

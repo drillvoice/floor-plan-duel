@@ -16,8 +16,9 @@ npm run build    # static build in dist/
 | Action | Player 1 | Player 2 |
 | --- | --- | --- |
 | Move | W A S D | Arrow keys |
-| Dodge left / right | F / G | , / . |
-| Shoot (hold) | H | / |
+| Dodge left | F | , (comma) |
+| Shoot (hold) | G | . (full stop) |
+| Dodge right | H | / (slash) |
 | Pause | Esc | Esc |
 
 Dodges are sideways relative to the way you face, and you always face your opponent. The title screen doubles as a key test: hold the keys you'd press together and check they all light up.

@@ -1,4 +1,5 @@
-import type { Config } from '../config';
+import type { Config, PowerUpKind } from '../config';
+import type { Grid } from './grid';
 import type { Vec2 } from './vec';
 
 export type PlayerIndex = 0 | 1;
@@ -39,6 +40,35 @@ export interface Arena {
   height: number;
   walls: Wall[];
   spawns: [Vec2, Vec2];
+  grid: Grid;
+}
+
+export type { PowerUpKind };
+
+// gold = round-long upgrade, blue = temporary buff, red = curse on the opponent
+export type PowerUpCategory = 'upgrade' | 'buff' | 'curse';
+
+export const POWER_UP_CATEGORY: Record<PowerUpKind, PowerUpCategory> = {
+  swiftShot: 'upgrade',
+  triggerHappy: 'upgrade',
+  shield: 'buff',
+  molasses: 'curse',
+};
+
+export interface PowerUp {
+  id: number;
+  kind: PowerUpKind;
+  pos: Vec2;
+  telegraph: number; // seconds until it appears; can't be picked up before then
+  remaining: number; // seconds left once it has appeared
+  lifespan: number;
+}
+
+export interface Effects {
+  swiftShot: number; // stacks, this round
+  triggerHappy: number; // stacks, this round
+  shield: number; // seconds left, 0 = none
+  molasses: number; // seconds left, 0 = none
 }
 
 export interface Dash {
@@ -56,6 +86,7 @@ export interface PlayerState {
   dodgeCooldown: number;
   dash: Dash | null;
   lineOfSight: boolean;
+  effects: Effects;
 }
 
 export interface Bullet {
@@ -78,7 +109,11 @@ export type GameEvent =
   | { type: 'roundStart'; round: number }
   | { type: 'roundEnd'; winner: PlayerIndex | null }
   | { type: 'matchEnd'; winner: PlayerIndex }
-  | { type: 'suddenDeath' };
+  | { type: 'suddenDeath' }
+  | { type: 'powerUpTelegraph'; kind: PowerUpKind; pos: Vec2 }
+  | { type: 'pickup'; player: PlayerIndex; kind: PowerUpKind; pos: Vec2 }
+  | { type: 'powerUpExpired'; pos: Vec2 }
+  | { type: 'shieldBlock'; player: PlayerIndex; pos: Vec2 };
 
 export interface GameState {
   cfg: Config;
@@ -90,6 +125,8 @@ export interface GameState {
   roundTime: number; // seconds of play in the current round
   players: [PlayerState, PlayerState];
   bullets: Bullet[];
+  powerUps: PowerUp[];
+  nextPowerUpIn: number;
   nextId: number;
   rng: number;
   lastRoundWinner: PlayerIndex | null; // null = draw

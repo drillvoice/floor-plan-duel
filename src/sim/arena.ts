@@ -1,8 +1,9 @@
 import type { Config } from '../config';
+import { buildGrid } from './grid';
 import type { Arena, MapData, Wall } from './types';
 import { distPointSegment, distSegmentSegment, type Vec2 } from './vec';
 
-export function buildArena(map: MapData): Arena {
+export function buildArena(map: MapData, cfg: Config): Arena {
   const { width: w, height: h } = map;
   const outer: Wall[] = [
     { a: { x: 0, y: 0 }, b: { x: w, y: 0 } },
@@ -10,12 +11,14 @@ export function buildArena(map: MapData): Arena {
     { a: { x: w, y: h }, b: { x: 0, y: h } },
     { a: { x: 0, y: h }, b: { x: 0, y: 0 } },
   ];
+  const walls = [...outer, ...map.walls.map((wl) => ({ a: { ...wl.a }, b: { ...wl.b } }))];
   return {
     name: map.name,
     width: w,
     height: h,
-    walls: [...outer, ...map.walls.map((wl) => ({ a: { ...wl.a }, b: { ...wl.b } }))],
+    walls,
     spawns: [{ ...map.spawns[0] }, { ...map.spawns[1] }],
+    grid: buildGrid(w, h, walls, map.spawns[0], cfg),
   };
 }
 

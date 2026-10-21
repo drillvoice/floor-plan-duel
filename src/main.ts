@@ -82,3 +82,10 @@ function frame(now: number): void {
 }
 
 requestAnimationFrame(frame);
+
+// Handy from the browser console when tuning: `fpd.state` is the live match.
+(window as unknown as { fpd: object }).fpd = {
+  get state() {
+    return screen.kind === 'match' ? screen.state : null;
+  },
+};

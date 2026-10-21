@@ -1,6 +1,8 @@
 // Every tunable number lives here. Distances are in units (a player is 1 unit
 // across), times in seconds, speeds in units per second.
 
+export type PowerUpKind = 'swiftShot' | 'triggerHappy' | 'shield' | 'molasses';
+
 export const CONFIG = {
   tickRate: 60,
 
@@ -41,6 +43,32 @@ export const CONFIG = {
     // Pause before a round starts and after it ends.
     countdown: 1.5,
     endDelay: 2,
+  },
+
+  powerUps: {
+    spawnIntervalMin: 4,
+    spawnIntervalMax: 9,
+    maxOnMap: 3,
+    // Spawn spots must be this far from walls and from players.
+    minWallDistance: 1.5,
+    minPlayerDistance: 1.5,
+    minPowerUpDistance: 2,
+    // How long an item stays once it appears, picked per spawn.
+    lifespans: [
+      { seconds: 1, weight: 0.2 },
+      { seconds: 3, weight: 0.2 },
+      { seconds: 10, weight: 0.35 },
+      { seconds: 30, weight: 0.25 },
+    ],
+    telegraph: 0.75,
+    radius: 0.45,
+    // Kinds that can spawn, with equal chance.
+    pool: ['swiftShot', 'triggerHappy', 'shield', 'molasses'] as PowerUpKind[],
+    swiftShot: { bulletSpeedBonus: 0.25, maxStacks: 3 },
+    // Each stack multiplies the fire cooldown by (1 - reduction).
+    triggerHappy: { cooldownReduction: 0.2, maxStacks: 3 },
+    shield: { duration: 10 },
+    molasses: { speedMultiplier: 0.6, duration: 4 },
   },
 
   map: {

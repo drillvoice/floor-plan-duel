@@ -1,8 +1,10 @@
 // Draws game state onto a canvas. Reads state and events; never changes them.
 
 import { KEY_BINDINGS, type PlayerKeys } from '../config';
+import { fireCooldownFor } from '../sim/powerups';
 import { suddenDeathMultiplier } from '../sim/step';
-import type { GameEvent, GameState, PlayerIndex } from '../sim/types';
+import { POWER_UP_CATEGORY, type GameEvent, type GameState, type PlayerIndex, type PowerUp, type PowerUpKind } from '../sim/types';
+import { CATEGORY_COLORS, drawPowerUpGlyph, powerUpColor } from './icons';
 import { add, leftOf, rightOf, scale, type Vec2 } from '../sim/vec';
 
 export const COLORS = {
@@ -12,7 +14,7 @@ export const COLORS = {
   wall: '#e9e4d8',
   text: '#f2efe8',
   muted: '#8b90a0',
-  players: ['#ff6b5b', '#3ec7d6'] as const,
+  players: ['#7ed957', '#c084fc'] as const,
 };
 
 const PLAYER_NAMES = ['P1', 'P2'] as const;
@@ -97,6 +99,7 @@ export class Renderer {
     ctx.fillRect(0, 0, this.width, this.height);
     this.drawArena(state);
     this.drawTrails();
+    for (const pu of state.powerUps) this.drawPowerUp(state, pu);
     for (const b of state.bullets) this.drawBullet(state, b.owner, b.pos, b.radius, b.age, b.lifetime);
     for (const i of [0, 1] as const) this.drawPlayer(state, i);
     this.drawHud(state);
@@ -194,6 +197,31 @@ export class Renderer {
     ctx.arc(c.x, c.y, r, 0, Math.PI * 2);
     ctx.fill();
 
+    if (p.effects.molasses > 0) {
+      // Slowed: a dark goo coating and a dashed red ring.
+      ctx.fillStyle = 'rgba(40,10,10,0.45)';
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.setLineDash([3, 4]);
+      ctx.strokeStyle = CATEGORY_COLORS.curse;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, r + 8, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    if (p.effects.shield > 0) {
+      const flicker = p.effects.shield < 2 && Math.floor(state.tick / 6) % 2 === 0;
+      if (!flicker) {
+        ctx.strokeStyle = CATEGORY_COLORS.buff;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(c.x, c.y, r + 6, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    }
+
     // Facing nub.
     const nub = this.toScreen(add(p.pos, scale(p.facing, cfg.player.radius * 0.95)));
     ctx.fillStyle = '#ffffff';
@@ -210,7 +238,7 @@ export class Renderer {
 
     // Fire cooldown ring.
     if (p.fireCooldown > 0) {
-      const frac = 1 - p.fireCooldown / cfg.fire.cooldown;
+      const frac = 1 - p.fireCooldown / fireCooldownFor(p.effects, state);
       ctx.strokeStyle = 'rgba(255,255,255,0.45)';
       ctx.lineWidth = 2;
       ctx.beginPath();
@@ -229,6 +257,45 @@ export class Renderer {
       ctx.lineTo(m.x + 4.2, m.y - 4.2);
       ctx.stroke();
     }
+  }
+
+  private drawPowerUp(state: GameState, pu: PowerUp): void {
+    const ctx = this.ctx;
+    const c = this.toScreen(pu.pos);
+    const r = state.cfg.powerUps.radius * this.scale;
+    const color = powerUpColor(pu.kind);
+    if (pu.telegraph > 0) {
+      // Shimmering ring that tightens onto the spot before the item appears.
+      const progress = 1 - pu.telegraph / state.cfg.powerUps.telegraph;
+      const spin = state.tick * 0.12;
+      ctx.save();
+      ctx.setLineDash([5, 5]);
+      ctx.lineDashOffset = -spin * 10;
+      ctx.strokeStyle = hexAlpha(color, 0.35 + 0.4 * Math.abs(Math.sin(state.tick * 0.3)));
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, r * (2.4 - 1.2 * progress), 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+      return;
+    }
+    // Soft glow, body, glyph.
+    ctx.fillStyle = hexAlpha(color, 0.18);
+    ctx.beginPath();
+    ctx.arc(c.x, c.y, r * 1.7, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(c.x, c.y, r, 0, Math.PI * 2);
+    ctx.fill();
+    drawPowerUpGlyph(ctx, pu.kind, c.x, c.y, r * 1.2);
+    // Lifespan ring shrinks as the item expires.
+    const left = Math.max(0, pu.remaining / pu.lifespan);
+    ctx.strokeStyle = hexAlpha(color, 0.9);
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.arc(c.x, c.y, r * 1.45, -Math.PI / 2, -Math.PI / 2 + left * Math.PI * 2);
+    ctx.stroke();
   }
 
   private drawHud(state: GameState): void {
@@ -264,6 +331,25 @@ export class Renderer {
         if (w < p.roundWins) ctx.fill();
         else ctx.stroke();
       }
+      // Active power-ups, with stacks or seconds left.
+      const active: [PowerUpKind, string][] = [];
+      if (p.effects.swiftShot) active.push(['swiftShot', `×${p.effects.swiftShot}`]);
+      if (p.effects.triggerHappy) active.push(['triggerHappy', `×${p.effects.triggerHappy}`]);
+      if (p.effects.shield > 0) active.push(['shield', `${Math.ceil(p.effects.shield)}s`]);
+      if (p.effects.molasses > 0) active.push(['molasses', `${Math.ceil(p.effects.molasses)}s`]);
+      active.forEach(([kind, label], n) => {
+        const px = x + dir * (68 + n * 52);
+        ctx.fillStyle = CATEGORY_COLORS[POWER_UP_CATEGORY[kind]];
+        ctx.beginPath();
+        ctx.arc(px, 50, 9, 0, Math.PI * 2);
+        ctx.fill();
+        drawPowerUpGlyph(ctx, kind, px, 50, 11);
+        ctx.fillStyle = COLORS.text;
+        ctx.font = '600 12px system-ui, sans-serif';
+        // Labels sit on the side away from the screen edge.
+        ctx.textAlign = left ? 'left' : 'right';
+        ctx.fillText(label, px + dir * 12, 51);
+      });
     }
 
     const sudden = state.roundTime >= cfg.round.timeLimit;

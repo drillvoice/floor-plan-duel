@@ -6,13 +6,14 @@
 
 import { CONFIG, type Config } from '../config';
 import { buildArena, hasLineOfSight, moveCircle, resolveCircle } from './arena';
+import { bulletSpeedFactor, fireCooldownFor, moveSpeedFor, noEffects, scheduleNextPowerUp, updatePowerUps } from './powerups';
 import type { Bullet, GameState, MapData, PlayerIndex, PlayerInput, PlayerState } from './types';
 import { add, dist, distPointSegment, dot, leftOf, len, normalize, rightOf, scale, sub, type Vec2 } from './vec';
 
 const EPS = 1e-9;
 
 export function createGame(map: MapData, seed: number, cfg: Config = CONFIG): GameState {
-  const arena = buildArena(map);
+  const arena = buildArena(map, cfg);
   const state: GameState = {
     cfg,
     arena,
@@ -23,6 +24,8 @@ export function createGame(map: MapData, seed: number, cfg: Config = CONFIG): Ga
     roundTime: 0,
     players: [newPlayer(), newPlayer()],
     bullets: [],
+    powerUps: [],
+    nextPowerUpIn: 0,
     nextId: 1,
     rng: seed >>> 0,
     lastRoundWinner: null,
@@ -44,6 +47,7 @@ function newPlayer(): PlayerState {
     dodgeCooldown: 0,
     dash: null,
     lineOfSight: false,
+    effects: noEffects(),
   };
 }
 
@@ -58,6 +62,8 @@ function startRound(state: GameState): void {
   state.phaseTime = 0;
   state.roundTime = 0;
   state.bullets = [];
+  state.powerUps = [];
+  scheduleNextPowerUp(state);
   for (const i of [0, 1] as const) {
     const p = state.players[i];
     p.pos = { ...spawnFor(state, i) };
@@ -66,6 +72,7 @@ function startRound(state: GameState): void {
     p.fireCooldown = 0;
     p.dodgeCooldown = 0;
     p.dash = null;
+    p.effects = noEffects(); // round-long upgrades reset each round
   }
   updateFacing(state);
   state.events.push({ type: 'roundStart', round: state.roundIndex });
@@ -104,6 +111,7 @@ export function step(state: GameState, inputs: [PlayerInput, PlayerInput]): Game
       updateFacing(state);
       for (const i of [0, 1] as const) tryFire(state, i, inputs[i]);
       updateBullets(state, dt);
+      updatePowerUps(state, dt);
       checkRoundEnd(state);
       break;
     }
@@ -150,7 +158,7 @@ function updatePlayer(state: GameState, i: PlayerIndex, input: PlayerInput, dt: 
   let move = input.move;
   const l = len(move);
   if (l > 1) move = scale(move, 1 / l); // diagonals aren't faster
-  moveCircle(p.pos, scale(move, cfg.player.moveSpeed * dt), cfg.player.radius, state.arena, cfg);
+  moveCircle(p.pos, scale(move, moveSpeedFor(p.effects, state) * dt), cfg.player.radius, state.arena, cfg);
   p.vel = scale(sub(p.pos, before), 1 / dt);
 }
 
@@ -196,7 +204,7 @@ function tryFire(state: GameState, i: PlayerIndex, input: PlayerInput): void {
   const p = state.players[i];
   if (!input.shoot || p.fireCooldown > EPS) return;
   const opp = state.players[i === 0 ? 1 : 0];
-  const speed = cfg.bullet.speed * suddenDeathMultiplier(state);
+  const speed = cfg.bullet.speed * bulletSpeedFactor(p.effects, state) * suddenDeathMultiplier(state);
   let dir = normalize(sub(aimPoint(p.pos, opp, speed, cfg.bullet.aimLead), p.pos));
   if (dir.x === 0 && dir.y === 0) dir = p.facing;
   const start = add(p.pos, scale(dir, cfg.player.radius + cfg.bullet.radius));
@@ -210,7 +218,7 @@ function tryFire(state: GameState, i: PlayerIndex, input: PlayerInput): void {
     radius: cfg.bullet.radius,
   };
   state.bullets.push(bullet);
-  p.fireCooldown = cfg.fire.cooldown;
+  p.fireCooldown = fireCooldownFor(p.effects, state);
   state.events.push({ type: 'fire', player: i, pos: { ...start } });
 }
 
@@ -228,8 +236,13 @@ function updateBullets(state: GameState, dt: number): void {
     for (let s = 0; s < steps && alive; s++) {
       b.pos = add(b.pos, scale(travel, 1 / steps));
       if (dist(b.pos, target.pos) < cfg.player.radius + b.radius) {
-        target.hits++;
-        state.events.push({ type: 'hit', player: targetIndex, pos: { ...b.pos }, hits: target.hits });
+        if (target.effects.shield > EPS) {
+          target.effects.shield = 0;
+          state.events.push({ type: 'shieldBlock', player: targetIndex, pos: { ...b.pos } });
+        } else {
+          target.hits++;
+          state.events.push({ type: 'hit', player: targetIndex, pos: { ...b.pos }, hits: target.hits });
+        }
         alive = false;
       } else if (state.arena.walls.some((w) => distPointSegment(b.pos, w.a, w.b) < b.radius + wallClear)) {
         state.events.push({ type: 'wallHit', pos: { ...b.pos } });

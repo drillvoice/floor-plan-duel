@@ -52,6 +52,7 @@ export class Editor {
   private nameInput: HTMLInputElement;
   private loadSelect: HTMLSelectElement;
   private fileInput: HTMLInputElement;
+  private validation = { key: '', errors: [] as string[] };
 
   constructor(
     private canvas: HTMLCanvasElement,
@@ -232,6 +233,13 @@ export class Editor {
     const errors = validateMap(this.map);
     if (errors.length) return this.flash(errors.join(' '));
     this.callbacks.onTestPlay(this.currentMap());
+  }
+
+  // Validation builds the walkable grid, so only redo it when the map changes.
+  private errors(): string[] {
+    const key = JSON.stringify(this.map);
+    if (key !== this.validation.key) this.validation = { key, errors: validateMap(this.map) };
+    return this.validation.errors;
   }
 
   private flash(message: string): void {
@@ -459,7 +467,7 @@ export class Editor {
     }
 
     // Status line: a recent message, else validation problems, else help.
-    const errors = validateMap(map);
+    const errors = this.errors();
     let text: string;
     let color: string = COLORS.muted;
     if (performance.now() < this.messageUntil) {

@@ -22,6 +22,28 @@ describe('map validation', () => {
     expect(validateMap(sealed)).toContain("The spawns can't reach each other.");
   });
 
+  it('treats a gap narrower than a player as closed', () => {
+    // Gap between wall ends is 0.95 units, less than a player's 1 unit width.
+    const split: MapData = {
+      name: 'Split',
+      width: 24,
+      height: 16,
+      walls: [
+        { a: { x: 0, y: 8 }, b: { x: 10.125, y: 8 } },
+        { a: { x: 11.375, y: 8 }, b: { x: 24, y: 8 } },
+      ],
+      spawns: [
+        { x: 4, y: 4 },
+        { x: 4, y: 12 },
+      ],
+    };
+    expect(validateMap(split)).toContain("The spawns can't reach each other.");
+    // A 1.2-unit gap on the editor's half-unit grid opens it up.
+    split.walls[0].b.x = 10;
+    split.walls[1].a.x = 11.5;
+    expect(validateMap(split)).toEqual([]);
+  });
+
   it('rejects a spawn inside a wall', () => {
     const bad: MapData = { ...THE_FLAT, spawns: [{ x: 12, y: 5 }, THE_FLAT.spawns[1]] };
     expect(validateMap(bad)[0]).toMatch(/Spawn 1 overlaps a wall/);

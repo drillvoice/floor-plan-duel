@@ -3,7 +3,7 @@
 
 import type { Config } from '../config';
 import type { Wall } from './types';
-import { distPointSegment, type Vec2 } from './vec';
+import { distPointSegment, distSegmentSegment, type Vec2 } from './vec';
 
 export interface Grid {
   cell: number;
@@ -11,6 +11,11 @@ export interface Grid {
   rows: number;
   // Distance from each cell centre to the nearest wall surface.
   clearance: number[];
+  // Whether a player fits along the straight line from each cell to its
+  // east / south neighbour. Checking cell centres alone would let a gap that
+  // is too narrow at a wall's end count as passable.
+  passEast: boolean[];
+  passSouth: boolean[];
   // Walkable for a player and reachable from the first spawn point.
   open: boolean[];
 }
@@ -30,32 +35,44 @@ export function buildGrid(width: number, height: number, walls: Wall[], spawn: V
     }
   }
 
+  const walkable = (i: number) => clearance[i] >= cfg.player.radius;
+  const center = (i: number) => ({ x: ((i % cols) + 0.5) * cell, y: (Math.floor(i / cols) + 0.5) * cell });
+  const fits = (i: number, j: number) => {
+    if (!walkable(i) || !walkable(j)) return false;
+    const a = center(i);
+    const b = center(j);
+    return walls.every((w) => distSegmentSegment(a, b, w.a, w.b) - half >= cfg.player.radius);
+  };
+  const passEast: boolean[] = new Array(cols * rows).fill(false);
+  const passSouth: boolean[] = new Array(cols * rows).fill(false);
+  for (let i = 0; i < cols * rows; i++) {
+    if (i % cols < cols - 1) passEast[i] = fits(i, i + 1);
+    if (i + cols < cols * rows) passSouth[i] = fits(i, i + cols);
+  }
+
   // Flood fill from the spawn so sealed-off pockets never count as floor.
   const open: boolean[] = new Array(cols * rows).fill(false);
-  const walkable = (i: number) => clearance[i] >= cfg.player.radius;
   const start = nearestWalkable(cellIndex({ cell, cols, rows }, spawn), cols, rows, walkable);
   if (start >= 0) {
     const queue = [start];
     open[start] = true;
     while (queue.length) {
       const i = queue.pop()!;
-      const c = i % cols;
-      const r = (i - c) / cols;
       const neighbours = [
-        c > 0 ? i - 1 : -1,
-        c < cols - 1 ? i + 1 : -1,
-        r > 0 ? i - cols : -1,
-        r < rows - 1 ? i + cols : -1,
+        passEast[i - 1] && i % cols > 0 ? i - 1 : -1,
+        passEast[i] ? i + 1 : -1,
+        i >= cols && passSouth[i - cols] ? i - cols : -1,
+        passSouth[i] ? i + cols : -1,
       ];
       for (const n of neighbours) {
-        if (n >= 0 && !open[n] && walkable(n)) {
+        if (n >= 0 && !open[n]) {
           open[n] = true;
           queue.push(n);
         }
       }
     }
   }
-  return { cell, cols, rows, clearance, open };
+  return { cell, cols, rows, clearance, passEast, passSouth, open };
 }
 
 function nearestWalkable(start: number, cols: number, rows: number, walkable: (i: number) => boolean): number {
@@ -75,6 +92,15 @@ function nearestWalkable(start: number, cols: number, rows: number, walkable: (i
     }
   }
   return best;
+}
+
+// Whether a player can walk directly between two orthogonally adjacent cells.
+export function canStep(grid: Grid, i: number, j: number): boolean {
+  if (j === i + 1) return grid.passEast[i] && i % grid.cols < grid.cols - 1;
+  if (j === i - 1) return grid.passEast[j] && j % grid.cols < grid.cols - 1;
+  if (j === i + grid.cols) return grid.passSouth[i];
+  if (j === i - grid.cols) return grid.passSouth[j];
+  return false;
 }
 
 export function cellIndex(grid: Pick<Grid, 'cell' | 'cols' | 'rows'>, p: Vec2): number {

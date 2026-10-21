@@ -1,7 +1,7 @@
 // A* over the walkable grid (8-connected, no corner cutting). Cells near walls
 // cost a little more so paths keep off the walls where there's room.
 
-import { cellCenter, cellIndex, type Grid } from '../sim/grid';
+import { canStep, cellCenter, cellIndex, type Grid } from '../sim/grid';
 import type { Vec2 } from '../sim/vec';
 
 const SQRT2 = Math.SQRT2;
@@ -45,8 +45,15 @@ export function findPath(grid: Grid, from: Vec2, to: Vec2): Vec2[] | null {
         if (nc < 0 || nr < 0 || nc >= cols || nr >= rows) continue;
         const ni = nr * cols + nc;
         if (!grid.open[ni] || closed[ni]) continue;
-        // Diagonal moves need both side cells open, or we'd clip a wall corner.
-        if (dx && dy && (!grid.open[r * cols + nc] || !grid.open[nr * cols + c])) continue;
+        if (!dx || !dy) {
+          if (!canStep(grid, cur, ni)) continue;
+        } else {
+          // Diagonal moves need both L-shaped routes clear, or we'd clip a wall corner.
+          const viaX = r * cols + nc;
+          const viaY = nr * cols + c;
+          if (!canStep(grid, cur, viaX) || !canStep(grid, viaX, ni)) continue;
+          if (!canStep(grid, cur, viaY) || !canStep(grid, viaY, ni)) continue;
+        }
         const wallPenalty = grid.clearance[ni] < 1 ? 1.5 : 0;
         const cost = g[cur] + (dx && dy ? SQRT2 : 1) + wallPenalty;
         if (cost < g[ni]) {

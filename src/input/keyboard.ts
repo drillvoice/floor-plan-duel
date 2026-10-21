@@ -75,8 +75,7 @@ export class KeyboardPlayer implements InputSource {
         y: (k.isHeld(keys.down) ? 1 : 0) - (k.isHeld(keys.up) ? 1 : 0),
       },
       // A press counts until it's used, so a tap between ticks isn't lost.
-      dodgeLeft: k.consumePress(keys.dodgeLeft),
-      dodgeRight: k.consumePress(keys.dodgeRight),
+      dodge: k.consumePress(keys.dodge),
       shoot: k.isHeld(keys.shoot) || k.consumePress(keys.shoot),
     };
   }

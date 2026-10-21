@@ -7,7 +7,7 @@ export const LOOKS = ['', '🐱', '🐶', '🦊', '🐼', '🐸', '🐵', '🐧'
 const LOOKS_KEY = 'fpd.looks';
 const EMOJI_FONT = '"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif';
 
-export function cycleLook(current: string, step: 1 | -1): string {
+export function cycleLook(current: string, step: 1 | -1 = 1): string {
   const i = Math.max(0, LOOKS.indexOf(current));
   return LOOKS[(i + step + LOOKS.length) % LOOKS.length];
 }

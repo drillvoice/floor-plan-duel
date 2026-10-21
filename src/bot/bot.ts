@@ -5,7 +5,6 @@
 import type { InputSource } from '../input/types';
 import { moveCircle } from '../sim/arena';
 import { moveSpeedFor } from '../sim/powerups';
-import { dodgeDirection } from '../sim/step';
 import { nextRandom, randomRange } from '../sim/rng';
 import type { Bullet, GameState, PlayerIndex, PlayerInput } from '../sim/types';
 import { dist, distSegmentSegment, dot, leftOf, len, normalize, rightOf, scale, sub, add, type Vec2 } from '../sim/vec';
@@ -33,7 +32,7 @@ export class BotPlayer implements InputSource {
   }
 
   sample(state: GameState, me: PlayerIndex): PlayerInput {
-    const input: PlayerInput = { move: { x: 0, y: 0 }, dodgeLeft: false, dodgeRight: false, shoot: false };
+    const input: PlayerInput = { move: { x: 0, y: 0 }, dodge: false, shoot: false };
     if (state.phase !== 'playing') return input;
     if (state.roundIndex !== this.round) {
       this.round = state.roundIndex;
@@ -109,20 +108,18 @@ export class BotPlayer implements InputSource {
     input.move = side;
 
     if (self.dash || self.dodgeCooldown > 0) return;
-    // Try both dodges and take the one that ends furthest off the bullet's
-    // line, as long as it actually gets clear.
-    const options = [
-      { left: true, dir: dodgeDirection(cfg, self, 'left') },
-      { left: false, dir: dodgeDirection(cfg, self, 'right') },
-    ].map((o) => {
+    // A dodge goes the way we move, so try dashing to either side of the
+    // bullet's line and take whichever ends furthest off it (walls can stop
+    // a dash short), as long as it actually gets clear.
+    const options = [side, scale(side, -1)].map((dir) => {
       const end = { ...self.pos };
-      moveCircle(end, scale(o.dir, cfg.dodge.distance), cfg.player.radius, state.arena, cfg);
-      return { ...o, miss: missDistance(end) };
+      moveCircle(end, scale(dir, cfg.dodge.distance), cfg.player.radius, state.arena, cfg);
+      return { dir, miss: missDistance(end) };
     });
     options.sort((a, b) => b.miss - a.miss);
     if (options[0].miss > cfg.player.radius + cfg.bullet.radius) {
-      if (options[0].left) input.dodgeLeft = true;
-      else input.dodgeRight = true;
+      input.move = options[0].dir;
+      input.dodge = true;
     }
   }
 

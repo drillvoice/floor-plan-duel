@@ -49,14 +49,14 @@ describe('bot', () => {
 
   it('dodges a shot that is about to hit it', () => {
     const input = incomingShot(0);
-    expect(input.dodgeLeft || input.dodgeRight).toBe(true);
-    // And walks off the bullet's line too.
-    expect(Math.abs(input.move.x)).toBeGreaterThan(0.5);
+    // Dashes sideways off the bullet's line.
+    expect(input.dodge).toBe(true);
+    expect(Math.abs(input.move.x)).toBeGreaterThan(0.9);
   });
 
   it('sometimes misses the dodge, per difficulty', () => {
     const input = incomingShot(1);
-    expect(input.dodgeLeft || input.dodgeRight).toBe(false);
+    expect(input.dodge).toBe(false);
   });
 
   it('finds the opponent from the spawns', () => {

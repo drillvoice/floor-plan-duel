@@ -22,7 +22,7 @@ On the title screen:
 
 - **Enter** starts a match, best of 5 rounds, 3 hits to lose a round.
 - **1 / 2** switch each player between Human and Bot (Easy, Normal, Hard). Two bots will play each other.
-- Each player's **dodge keys** cycle their look: a plain circle or a cute icon inside it.
+- Each player's **dodge key** cycles their look: a plain circle or a cute icon inside it.
 - **Tab** changes the map; **E** opens the map editor (on a saved map, or the one you edited last).
 - **M** mutes sound.
 - The key caps light up while held: use this to check your keyboard can register everyone's keys at once.
@@ -30,12 +30,11 @@ On the title screen:
 | Action | Player 1 | Player 2 |
 | --- | --- | --- |
 | Move | W A S D | Arrow keys |
-| Dodge left | F | , (comma) |
+| Dodge | F | , (comma) |
 | Shoot (hold) | G | . (full stop) |
-| Dodge right | H | / (slash) |
 | Pause | Esc | Esc |
 
-Dodges are a quick dash to the left (west) or right (east) of the screen. A dodge has a 1.2 s cooldown (the little ticks beside your player dim while it recharges). After 90 s a round goes to sudden death and bullets speed up every 5 s.
+Dodge is a quick dash in the direction you're moving, diagonals included; standing still, it goes the way you last moved. It has a 1.2 s cooldown: the little arrow beside your player shows where a dodge will go, and dims while it recharges. After 90 s a round goes to sudden death and bullets speed up every 5 s.
 
 Power-ups flash a ring where they're about to appear, and a ring around each one shrinks as it expires:
 
@@ -72,7 +71,7 @@ All tunable numbers live in `src/config.ts`.
 ## Code layout
 
 - `src/sim/`: the game rules. A pure fixed 60 Hz `step(state, inputs)` with a seeded RNG and no DOM or clock, so a match is reproducible from its seed and inputs.
-- `src/input/`: keyboard input. `src/bot/`: the bot and A* pathfinding. Both produce the same `{ move, dodgeLeft, dodgeRight, shoot }` input.
+- `src/input/`: keyboard input. `src/bot/`: the bot and A* pathfinding. Both produce the same `{ move, dodge, shoot }` input.
 - `src/render/`: canvas drawing, effects and synthesised sound. Never changes game state.
 - `src/screens/editor.ts`, `src/maps/`: the editor, the built-in map, validation and storage.
 - `scripts/sim.ts`: the headless simulator.

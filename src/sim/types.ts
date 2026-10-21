@@ -7,15 +7,13 @@ export type PlayerIndex = 0 | 1;
 // What every input source (keyboard, bot, later gamepad/touch) produces per tick.
 export interface PlayerInput {
   move: Vec2; // any length; normalised to at most 1 by the sim
-  dodgeLeft: boolean;
-  dodgeRight: boolean;
+  dodge: boolean; // dash in the direction of `move` (or the last direction moved)
   shoot: boolean;
 }
 
 export const NO_INPUT: PlayerInput = {
   move: { x: 0, y: 0 },
-  dodgeLeft: false,
-  dodgeRight: false,
+  dodge: false,
   shoot: false,
 };
 
@@ -81,6 +79,7 @@ export interface PlayerState {
   pos: Vec2;
   vel: Vec2; // walking velocity achieved last tick (excludes dashes)
   facing: Vec2; // unit vector toward the opponent
+  lastMove: Vec2; // unit vector of the last movement input; where a dodge goes when standing still
   hits: number; // hits taken this round
   roundWins: number;
   fireCooldown: number;

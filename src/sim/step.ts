@@ -8,7 +8,7 @@ import { CONFIG, type Config } from '../config';
 import { buildArena, hasLineOfSight, moveCircle, resolveCircle } from './arena';
 import { bulletSpeedFactor, fireCooldownFor, moveSpeedFor, noEffects, scheduleNextPowerUp, updatePowerUps } from './powerups';
 import type { Bullet, GameState, MapData, PlayerIndex, PlayerInput, PlayerState } from './types';
-import { add, dist, distPointSegment, dot, leftOf, len, normalize, rightOf, scale, sub, type Vec2 } from './vec';
+import { add, dist, distPointSegment, dot, len, normalize, scale, sub, type Vec2 } from './vec';
 
 const EPS = 1e-9;
 
@@ -41,6 +41,7 @@ function newPlayer(): PlayerState {
     pos: { x: 0, y: 0 },
     vel: { x: 0, y: 0 },
     facing: { x: 1, y: 0 },
+    lastMove: { x: 0, y: 0 },
     hits: 0,
     roundWins: 0,
     fireCooldown: 0,
@@ -72,6 +73,7 @@ function startRound(state: GameState): void {
     p.fireCooldown = 0;
     p.dodgeCooldown = 0;
     p.dash = null;
+    p.lastMove = { x: 0, y: 0 };
     p.effects = noEffects(); // round-long upgrades reset each round
   }
   updateFacing(state);
@@ -135,9 +137,9 @@ function updatePlayer(state: GameState, i: PlayerIndex, input: PlayerInput, dt: 
   p.fireCooldown = Math.max(0, p.fireCooldown - dt);
   p.dodgeCooldown = Math.max(0, p.dodgeCooldown - dt);
 
-  if (!p.dash && p.dodgeCooldown <= EPS && (input.dodgeLeft || input.dodgeRight)) {
-    // If both are pressed, left wins.
-    const dir = dodgeDirection(cfg, p, input.dodgeLeft ? 'left' : 'right');
+  if (len(input.move) > EPS) p.lastMove = normalize(input.move);
+  if (!p.dash && p.dodgeCooldown <= EPS && input.dodge) {
+    const dir = dodgeDirection(p);
     p.dash = { dir, remaining: cfg.dodge.duration };
     p.dodgeCooldown = cfg.dodge.cooldown;
     state.events.push({ type: 'dodge', player: i, from: { ...p.pos }, dir });
@@ -162,9 +164,10 @@ function updatePlayer(state: GameState, i: PlayerIndex, input: PlayerInput, dt: 
   p.vel = scale(sub(p.pos, before), 1 / dt);
 }
 
-export function dodgeDirection(cfg: Config, p: PlayerState, side: 'left' | 'right'): Vec2 {
-  if (cfg.dodge.relativeTo === 'facing') return side === 'left' ? leftOf(p.facing) : rightOf(p.facing);
-  return { x: side === 'left' ? -1 : 1, y: 0 };
+// A dodge dashes the way the player is moving; standing still, the way they
+// last moved; before they've moved at all, toward the opponent.
+export function dodgeDirection(p: PlayerState): Vec2 {
+  return len(p.lastMove) > EPS ? p.lastMove : p.facing;
 }
 
 function updateFacing(state: GameState): void {

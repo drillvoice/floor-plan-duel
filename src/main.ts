@@ -110,11 +110,9 @@ keyboard.onPress((code) => {
     if (code === 'Enter' || code === 'Space') startMatch(selectedMap());
     else if (code === 'Digit1') cycleSlot(0);
     else if (code === 'Digit2') cycleSlot(1);
-    else if (code === KEY_BINDINGS.p1.dodgeLeft || code === KEY_BINDINGS.p1.dodgeRight) {
-      looks[0] = cycleLook(looks[0], code === KEY_BINDINGS.p1.dodgeLeft ? -1 : 1);
-      saveLooks(looks);
-    } else if (code === KEY_BINDINGS.p2.dodgeLeft || code === KEY_BINDINGS.p2.dodgeRight) {
-      looks[1] = cycleLook(looks[1], code === KEY_BINDINGS.p2.dodgeLeft ? -1 : 1);
+    else if (code === KEY_BINDINGS.p1.dodge || code === KEY_BINDINGS.p2.dodge) {
+      const i = code === KEY_BINDINGS.p1.dodge ? 0 : 1;
+      looks[i] = cycleLook(looks[i], 1);
       saveLooks(looks);
     } else if (code === 'Tab') mapIndex = (mapIndex + 1) % availableMaps().length;
     else if (code === 'KeyE') {

@@ -302,18 +302,21 @@ export class Renderer {
     const r = cfg.player.radius * this.scale;
     const color = COLORS.players[i];
 
-    // Dodge direction hints, dim while on cooldown.
+    // Chevron showing where a dodge would go, dim while it recharges.
     const ready = p.dodgeCooldown <= 0;
-    for (const side of [dodgeDirection(cfg, p, 'left'), dodgeDirection(cfg, p, 'right')]) {
-      const tip = this.toScreen(add(p.pos, scale(side, cfg.player.radius + 0.45)));
-      const base = this.toScreen(add(p.pos, scale(side, cfg.player.radius + 0.2)));
-      ctx.strokeStyle = hexAlpha(color, ready ? 0.8 : 0.2);
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(base.x, base.y);
-      ctx.lineTo(tip.x, tip.y);
-      ctx.stroke();
-    }
+    const dodgeDir = dodgeDirection(p);
+    const perp = { x: -dodgeDir.y, y: dodgeDir.x };
+    const tip = this.toScreen(add(p.pos, scale(dodgeDir, cfg.player.radius + 0.42)));
+    const wingA = this.toScreen(add(add(p.pos, scale(dodgeDir, cfg.player.radius + 0.2)), scale(perp, 0.22)));
+    const wingB = this.toScreen(add(add(p.pos, scale(dodgeDir, cfg.player.radius + 0.2)), scale(perp, -0.22)));
+    ctx.strokeStyle = hexAlpha(color, ready ? 0.9 : 0.2);
+    ctx.lineWidth = 2.5;
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.moveTo(wingA.x, wingA.y);
+    ctx.lineTo(tip.x, tip.y);
+    ctx.lineTo(wingB.x, wingB.y);
+    ctx.stroke();
 
     ctx.fillStyle = color;
     ctx.beginPath();
@@ -600,7 +603,7 @@ export class Renderer {
     ctx.fillStyle = COLORS.muted;
     ctx.font = '400 13px system-ui, sans-serif';
     ctx.fillText(`press ${i + 1} to change`, cx, top + 212);
-    ctx.fillText('dodge keys change your look', cx, top + 232);
+    ctx.fillText('dodge key changes your look', cx, top + 232);
     if (slot !== 'human') ctx.globalAlpha = 0.3;
     const k = 42;
     const gap = 6;
@@ -633,9 +636,8 @@ export class Renderer {
     ctx.fillText('move', moveX, y0 + 2 * k + gap + 12);
     const ax = cx + 40;
     const step = k + 18;
-    cap(keys.dodgeLeft, ax, y0 + k + gap, 'dodge L');
-    cap(keys.shoot, ax + step, y0 + k + gap, 'shoot');
-    cap(keys.dodgeRight, ax + 2 * step, y0 + k + gap, 'dodge R');
+    cap(keys.dodge, ax + step / 2, y0 + k + gap, 'dodge');
+    cap(keys.shoot, ax + step * 1.5, y0 + k + gap, 'shoot');
     ctx.globalAlpha = 1;
   }
 }

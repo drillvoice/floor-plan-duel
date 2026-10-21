@@ -29,11 +29,8 @@ export const CONFIG = {
   dodge: {
     distance: 2.5,
     duration: 0.15,
-    // Shared by both directions.
+    // A dodge dashes the way you're moving (or last moved).
     cooldown: 1.2,
-    // 'screen': dodge left/right dashes west/east, like movement.
-    // 'facing': sideways relative to the line to the opponent.
-    relativeTo: 'screen' as 'screen' | 'facing',
   },
 
   round: {
@@ -108,18 +105,16 @@ export const KEY_BINDINGS = {
     down: 'KeyS',
     left: 'KeyA',
     right: 'KeyD',
-    dodgeLeft: 'KeyF',
+    dodge: 'KeyF',
     shoot: 'KeyG',
-    dodgeRight: 'KeyH',
   },
   p2: {
     up: 'ArrowUp',
     down: 'ArrowDown',
     left: 'ArrowLeft',
     right: 'ArrowRight',
-    dodgeLeft: 'Comma',
+    dodge: 'Comma',
     shoot: 'Period',
-    dodgeRight: 'Slash',
   },
   pause: 'Escape',
 };

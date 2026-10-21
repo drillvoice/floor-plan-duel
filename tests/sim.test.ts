@@ -79,67 +79,70 @@ describe('movement', () => {
 });
 
 describe('dodging', () => {
-  it('dodges west and east whichever way the player faces', () => {
+  it('dashes the dodge distance in the direction of movement', () => {
     const s = playing();
     placePlayer(s, 0, { x: 18, y: 10 });
     placePlayer(s, 1, { x: 22, y: 14 });
-    run(s, 1, input({ dodgeLeft: true }));
+    run(s, 1, input({ move: { x: 0, y: -1 }, dodge: true }));
     run(s, 20);
-    expect(s.players[0].pos.x).toBeCloseTo(18 - CONFIG.dodge.distance, 2);
-    expect(s.players[0].pos.y).toBeCloseTo(10, 2);
+    // One tick of walking north first, then the dash.
+    const walked = CONFIG.player.moveSpeed * DT;
+    expect(s.players[0].pos.y).toBeCloseTo(10 - CONFIG.dodge.distance, 1);
+    expect(s.players[0].pos.y).toBeGreaterThan(10 - CONFIG.dodge.distance - walked - 1e-6);
+    expect(s.players[0].pos.x).toBeCloseTo(18, 3);
   });
 
-  it('can dodge relative to facing instead', () => {
-    const cfg: Config = { ...CONFIG, dodge: { ...CONFIG.dodge, relativeTo: 'facing' } };
-    const s = playing(BOX, cfg);
-    // Opponent due east, so "left" of facing is north.
+  it('dashes diagonally the same distance', () => {
+    const s = playing();
+    placePlayer(s, 0, { x: 16, y: 10 });
+    placePlayer(s, 1, { x: 22, y: 14 });
+    run(s, 1, input({ move: { x: 1, y: 1 }, dodge: true }));
+    run(s, 20);
+    expect(dist(s.players[0].pos, { x: 16, y: 10 })).toBeCloseTo(CONFIG.dodge.distance, 2);
+    expect(s.players[0].pos.x - 16).toBeCloseTo(s.players[0].pos.y - 10, 3);
+  });
+
+  it('standing still, dashes the way the player last moved', () => {
+    const s = playing();
+    placePlayer(s, 0, { x: 18, y: 10 });
+    placePlayer(s, 1, { x: 22, y: 14 });
+    run(s, 5, input({ move: { x: -1, y: 0 } }));
+    const x0 = s.players[0].pos.x;
+    run(s, 1, input({ dodge: true }));
+    run(s, 20);
+    expect(s.players[0].pos.x).toBeCloseTo(x0 - CONFIG.dodge.distance, 2);
+  });
+
+  it('before moving at all, dashes toward the opponent', () => {
+    const s = playing();
     placePlayer(s, 0, { x: 4, y: 12 });
     placePlayer(s, 1, { x: 20, y: 12 });
-    run(s, 1, input({ dodgeLeft: true }));
+    run(s, 1, input({ dodge: true }));
     run(s, 20);
-    expect(s.players[0].pos.y).toBeCloseTo(12 - CONFIG.dodge.distance, 2);
-  });
-
-  it('dashes the dodge distance to the left', () => {
-    const s = playing();
-    // Player 0 at the bottom, opponent straight north: left is west.
-    placePlayer(s, 0, { x: 18, y: 14 });
-    placePlayer(s, 1, { x: 18, y: 4 });
-    run(s, 1, input({ dodgeLeft: true }));
-    run(s, 20);
-    expect(s.players[0].pos.x).toBeCloseTo(18 - CONFIG.dodge.distance, 2);
-    expect(s.players[0].pos.y).toBeCloseTo(14, 2);
-  });
-
-  it('dashes to the right', () => {
-    const s = playing();
-    placePlayer(s, 0, { x: 18, y: 14 });
-    placePlayer(s, 1, { x: 18, y: 4 });
-    run(s, 1, input({ dodgeRight: true }));
-    run(s, 20);
-    expect(s.players[0].pos.x).toBeCloseTo(18 + CONFIG.dodge.distance, 2);
+    expect(s.players[0].pos.x).toBeCloseTo(4 + CONFIG.dodge.distance, 2);
   });
 
   it('ignores movement input while dashing', () => {
     const s = playing();
     placePlayer(s, 0, { x: 18, y: 14 });
     placePlayer(s, 1, { x: 18, y: 4 });
-    run(s, 9, input({ dodgeLeft: true, move: { x: 0, y: -1 } }));
+    run(s, 1, input({ move: { x: -1, y: 0 }, dodge: true }));
+    run(s, 8, input({ move: { x: 0, y: -1 } }));
     expect(s.players[0].pos.y).toBeCloseTo(14, 2);
   });
 
-  it('has a shared cooldown', () => {
+  it('has a cooldown', () => {
     const s = playing();
     placePlayer(s, 0, { x: 18, y: 14 });
     placePlayer(s, 1, { x: 18, y: 4 });
     let dodges = 0;
     for (let t = 0; t < 60; t++) {
-      step(s, [input({ dodgeLeft: t % 2 === 0, dodgeRight: t % 2 === 1 }), NO_INPUT]);
+      step(s, [input({ move: { x: t % 20 < 10 ? 1 : -1, y: 0 }, dodge: true }), NO_INPUT]);
       dodges += s.events.filter((e) => e.type === 'dodge').length;
     }
     expect(dodges).toBe(1); // 1 s of mashing, cooldown 1.2 s
     run(s, Math.round((CONFIG.dodge.cooldown - 1) / DT) + 1);
-    step(s, [input({ dodgeRight: true }), NO_INPUT]);
+    step(s, [input({ dodge: true }), NO_INPUT]);
     expect(s.events.some((e) => e.type === 'dodge')).toBe(true);
   });
 
@@ -147,8 +150,8 @@ describe('dodging', () => {
     const s = playing();
     placePlayer(s, 0, { x: 11, y: 4 });
     placePlayer(s, 1, { x: 11, y: 14 });
-    // Dodging right goes east: into the wall at x = 12.
-    run(s, 1, input({ dodgeRight: true }));
+    // Dashing east, into the wall at x = 12.
+    run(s, 1, input({ move: { x: 1, y: 0 }, dodge: true }));
     run(s, 3);
     expect(s.players[0].dash).toBeNull();
     expect(s.players[0].pos.x).toBeCloseTo(12 - CONFIG.map.wallThickness / 2 - CONFIG.player.radius, 3);
@@ -308,8 +311,8 @@ describe('determinism', () => {
       const s = createGame(THE_FLAT, 7);
       for (let t = 0; t < 600; t++) {
         step(s, [
-          input({ move: { x: Math.sign(Math.sin(t / 20)), y: 1 }, shoot: t % 3 === 0, dodgeLeft: t % 50 === 0 }),
-          input({ move: { x: -1, y: Math.sign(Math.cos(t / 15)) }, shoot: true, dodgeRight: t % 70 === 0 }),
+          input({ move: { x: Math.sign(Math.sin(t / 20)), y: 1 }, shoot: t % 3 === 0, dodge: t % 50 === 0 }),
+          input({ move: { x: -1, y: Math.sign(Math.cos(t / 15)) }, shoot: true, dodge: t % 70 === 0 }),
         ]);
       }
       const { cfg: _cfg, ...rest } = s;

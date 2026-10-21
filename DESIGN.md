@@ -20,9 +20,8 @@ Both players share one keyboard, split left and right so hands don't collide. Di
 | Action | Player 1 (left) | Player 2 (right) |
 | --- | --- | --- |
 | Move | W A S D | Arrow keys |
-| Dodge left | F | , (comma) |
-| Dodge right | G | . (full stop) |
-| Shoot | H | / (slash) |
+| Dodge | F | , (comma) |
+| Shoot | G | . (full stop) |
 | Pause | Esc | Esc |
 
 Either player slot can be switched to the bot from the start screen. A Gamepad API mapping and mobile touch controls (left joystick, three right-thumb buttons) come later; the input layer is built so adding them doesn't touch game logic.
@@ -41,8 +40,8 @@ Shots fly straight at where the opponent is when fired, slowly enough to see and
 | Bullet size | 0.3 units |  |
 | Fire cooldown | 0.6 s | Holding shoot fires as fast as allowed |
 | Bullet lifetime | 1 s max, so 8 units of range at base speed | Range = speed × lifetime, so faster bullets also reach further. Bullets fade over their last 0.2 s so the range is readable. Most shots hit a wall first. |
-| Dodge distance | 2.5 units over 0.15 s | Sideways, relative to the line to the opponent |
-| Dodge cooldown | 1.2 s per dodge, shared by both directions | Prevents permanent invulnerability |
+| Dodge distance | 2.5 units over 0.15 s | In the direction you're moving (or last moved), diagonals included |
+| Dodge cooldown | 1.2 s per dodge | Prevents permanent invulnerability |
 | Dodge invulnerability | None | Dodging moves you out of the way; it does not phase through bullets |
 | Hits to lose a round | 3 |  |
 | Round format | Best of 5 rounds | Players respawn at opposite spawn points each round |
@@ -61,7 +60,7 @@ Power-ups appear at random spots, linger for a random time, and are either round
 
 **Spawning**
 
-- A new power-up every 4–9 s (random), at most 3 on the map at once.
+- A new power-up every 3–6 s (random), at most 3 on the map at once.
 - Location: any open floor cell at least 1.5 units from walls and players. No bias toward either player in the MVP.
 - Lifespan, picked per spawn: 1 s (20%), 3 s (20%), 10 s (35%), 30 s (25%).
 - **Telegraph:** a shimmering ring shows the spot 0.75 s before the item appears.
@@ -75,18 +74,18 @@ Power-ups appear at random spots, linger for a random time, and are either round
 | Power-up | Kind | Effect | Duration | In MVP |
 | --- | --- | --- | --- | --- |
 | Swift Shot | Round-long | Bullet speed +25% (range grows with it), stacks to 3 | Round | Yes |
-| Long Shot | Round-long | Bullet lifetime +40% (more range, same speed), stacks to 3 | Round | No |
+| Long Shot | Round-long | Bullet lifetime +40% (more range, same speed), stacks to 3 | Round | v2 |
 | Trigger Happy | Round-long | Fire cooldown −20%, stacks to 3 | Round | Yes |
-| Fleet Foot | Round-long | Move speed +15%, stacks to 3 | Round | No |
-| Spare Dodge | Round-long | One extra dodge charge | Round | No |
+| Fleet Foot | Round-long | Move speed +15%, stacks to 3 | Round | v2 |
+| Spare Dodge | Round-long | One extra dodge charge | Round | v2 |
 | Shield | Temporary | Absorbs the next hit | Until hit or 10 s | Yes |
-| Rapid Fire | Temporary | Fire cooldown halved | 5 s | No |
-| Bouncer | Temporary | Bullets bounce off walls once | 8 s | No |
-| Ghost | Temporary | Walk through walls (not out of the map) | 4 s | No |
-| Lead Shot | Temporary | Auto-aim predicts the opponent's movement | 6 s | No |
+| Rapid Fire | Temporary | Fire cooldown halved | 5 s | v2 |
+| Bouncer | Temporary | Bullets bounce off walls once | 8 s | v2 |
+| Ghost | Temporary | Walk through walls (not out of the map) | 4 s | v2 |
+| Lead Shot | Temporary | Auto-aim predicts the opponent's movement | 6 s | v2 |
 | Molasses | Curse | Opponent move speed −40% | 4 s | Yes |
-| Topsy-Turvy | Curse | Opponent's movement controls reversed | 3 s | No |
-| Big Target | Curse | Opponent grows 50% bigger (easier to hit) | 5 s | No |
+| Topsy-Turvy | Curse | Opponent's movement controls reversed | 3 s | v2 |
+| Big Target | Curse | Opponent grows 50% bigger (easier to hit) | 5 s | v2 |
 
 If round-long stacking proves to snowball, try spawning power-ups slightly closer to whoever is losing.
 
@@ -153,7 +152,7 @@ A static TypeScript web app with a pure simulation core, so the same rules run f
 
 **Layers**
 
-1. **Inputs:** keyboard player 1, keyboard player 2, bot. Each produces `{ move: {x, y}, dodgeLeft, dodgeRight, shoot }` per tick.
+1. **Inputs:** keyboard player 1, keyboard player 2, bot. Each produces `{ move: {x, y}, dodge, shoot }` per tick.
 2. **Simulation:** a fixed 60 Hz tick, `step(state, inputs) → state`. No DOM, no `Math.random` (use a seeded RNG), no wall-clock time. This makes matches reproducible from a seed plus inputs, which gives replays and network play almost for free later.
 3. **Renderer:** draws the latest state on the canvas, plus effects (shake, trails, rings). Never changes game state.
 4. **Screens:** title, map select, editor, match, results.
@@ -174,7 +173,10 @@ The MVP proves one thing: dodging slow auto-aimed bullets on a shared laptop is 
 - [ ] Bot at three difficulties, plus headless bot-vs-bot simulation
 - [ ] Basic juice: hit flash, screen shake, dash trail, simple synthesised sound effects
 
-**v2** — the rest of the power-up set, photo/line-drawing import, a few more built-in maps, a "make it a LOT more fun" polish pass.
+**v2** — the rest of the power-up set (done), photo/line-drawing import, a few more built-in maps, a "make it a LOT more fun" polish pass, and:
+
+- **Hotseat mode (done):** still 1v1, but for a group taking turns. Players enter their names, the loser of each match swaps out for the next person in the queue, and a scoreboard tracks who's playing and everyone's wins.
+- **Photo looks:** use a picture of your face inside your player circle, alongside the icon looks.
 
 **v3** — mobile touch controls and two-phone play over a small relay server; maybe a first-person mode rendered from the same walls.
 

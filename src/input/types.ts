@@ -1,0 +1,8 @@
+import type { GameState, PlayerIndex, PlayerInput } from '../sim/types';
+
+// Anything that can drive a player: keyboard, bot, later gamepad or touch.
+// Called once per simulation tick.
+export interface InputSource {
+  readonly kind: 'human' | 'bot';
+  sample(state: GameState, player: PlayerIndex): PlayerInput;
+}

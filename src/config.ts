@@ -1,6 +1,27 @@
 // Every tunable number lives here. Distances are in units (a player is 1 unit
 // across), times in seconds, speeds in units per second.
 
+export const POWER_UP_KINDS = [
+  // Round-long upgrades (stack).
+  'swiftShot',
+  'longShot',
+  'triggerHappy',
+  'fleetFoot',
+  'spareDodge',
+  // Temporary buffs.
+  'shield',
+  'rapidFire',
+  'bouncer',
+  'ghost',
+  'leadShot',
+  // Curses on the opponent.
+  'molasses',
+  'topsyTurvy',
+  'bigTarget',
+] as const;
+
+export type PowerUpKind = (typeof POWER_UP_KINDS)[number];
+
 export const CONFIG = {
   tickRate: 60,
 
@@ -27,7 +48,7 @@ export const CONFIG = {
   dodge: {
     distance: 2.5,
     duration: 0.15,
-    // Shared by both directions.
+    // A dodge dashes the way you're moving (or last moved).
     cooldown: 1.2,
   },
 
@@ -41,6 +62,63 @@ export const CONFIG = {
     // Pause before a round starts and after it ends.
     countdown: 1.5,
     endDelay: 2,
+  },
+
+  powerUps: {
+    spawnIntervalMin: 3,
+    spawnIntervalMax: 6,
+    maxOnMap: 3,
+    // Spawn spots must be this far from walls and from players.
+    minWallDistance: 1.5,
+    minPlayerDistance: 1.5,
+    minPowerUpDistance: 2,
+    // How long an item stays once it appears, picked per spawn.
+    lifespans: [
+      { seconds: 1, weight: 0.2 },
+      { seconds: 3, weight: 0.2 },
+      { seconds: 10, weight: 0.35 },
+      { seconds: 30, weight: 0.25 },
+    ],
+    telegraph: 0.75,
+    radius: 0.45,
+    // Kinds that can spawn, with equal chance.
+    pool: [...POWER_UP_KINDS] as PowerUpKind[],
+    swiftShot: { bulletSpeedBonus: 0.25, maxStacks: 3 },
+    // More range at the same speed.
+    longShot: { lifetimeBonus: 0.4, maxStacks: 3 },
+    // Each stack multiplies the fire cooldown by (1 - reduction).
+    triggerHappy: { cooldownReduction: 0.2, maxStacks: 3 },
+    fleetFoot: { moveSpeedBonus: 0.15, maxStacks: 3 },
+    // Each stack is one extra dodge charge.
+    spareDodge: { maxStacks: 1 },
+    shield: { duration: 10 },
+    rapidFire: { cooldownMultiplier: 0.5, duration: 5 },
+    bouncer: { bounces: 1, duration: 8 },
+    // Walk through inner walls (never out of the map).
+    ghost: { duration: 4 },
+    // Auto-aim fully predicts the opponent's movement.
+    leadShot: { aimLead: 1, duration: 6 },
+    molasses: { speedMultiplier: 0.6, duration: 4 },
+    // Opponent's movement (and so their dodges) reversed.
+    topsyTurvy: { duration: 3 },
+    // Opponent is easier to hit; walls still treat them as normal size.
+    bigTarget: { sizeMultiplier: 1.5, duration: 5 },
+  },
+
+  bot: {
+    difficulty: {
+      easy: { reactionDelay: 0.35, missChance: 0.4 },
+      normal: { reactionDelay: 0.2, missChance: 0.2 },
+      hard: { reactionDelay: 0.08, missChance: 0.05 },
+    },
+    // Dodge a bullet that will pass within this margin in the next `threatHorizon` s.
+    threatHorizon: 0.4,
+    threatMargin: 0.2,
+    preferredDistance: 7,
+    distanceTolerance: 1.5,
+    strafeSwitchMin: 0.8,
+    strafeSwitchMax: 2.2,
+    repathInterval: 0.25,
   },
 
   map: {
@@ -61,18 +139,16 @@ export const KEY_BINDINGS = {
     down: 'KeyS',
     left: 'KeyA',
     right: 'KeyD',
-    dodgeLeft: 'KeyF',
-    dodgeRight: 'KeyG',
-    shoot: 'KeyH',
+    dodge: 'KeyF',
+    shoot: 'KeyG',
   },
   p2: {
     up: 'ArrowUp',
     down: 'ArrowDown',
     left: 'ArrowLeft',
     right: 'ArrowRight',
-    dodgeLeft: 'Comma',
-    dodgeRight: 'Period',
-    shoot: 'Slash',
+    dodge: 'Comma',
+    shoot: 'Period',
   },
   pause: 'Escape',
 };

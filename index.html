@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Floor Plan Duel</title>
+    <meta name="theme-color" content="#16181f" />
+    <link rel="icon" href="icon.svg" type="image/svg+xml" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        overflow: hidden;
+        background: #16181f;
+      }
+      canvas {
+        display: block;
+      }
+      #editor-toolbar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 64px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 0 16px;
+        box-sizing: border-box;
+        overflow-x: auto;
+        font: 14px system-ui, sans-serif;
+      }
+      #editor-toolbar[hidden] {
+        display: none;
+      }
+      #editor-toolbar input[type='text'],
+      #editor-toolbar select,
+      #editor-toolbar button {
+        font: inherit;
+        color: #f2efe8;
+        background: #262a35;
+        border: 1px solid #3a3f4d;
+        border-radius: 6px;
+        padding: 7px 12px;
+      }
+      #editor-toolbar input[type='text'] {
+        width: 160px;
+      }
+      #editor-toolbar button {
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      #editor-toolbar .save-status {
+        color: #8b90a0;
+        white-space: nowrap;
+        margin-left: 4px;
+      }
+      #editor-toolbar .save-status[data-state='saved'] {
+        color: #7ed957;
+      }
+      #editor-toolbar .save-status[data-state='failed'] {
+        color: #ff4d4d;
+      }
+      #editor-toolbar button:hover,
+      #editor-toolbar select:hover {
+        background: #323746;
+      }
+      #hotseat {
+        position: fixed;
+        inset: 0;
+        overflow-y: auto;
+        display: flex;
+        justify-content: center;
+        align-items: flex-start;
+        padding: 32px 16px;
+        box-sizing: border-box;
+        font: 15px system-ui, sans-serif;
+        color: #f2efe8;
+      }
+      #hotseat[hidden] {
+        display: none;
+      }
+      #hotseat .panel {
+        width: 100%;
+        max-width: 720px;
+      }
+      #hotseat h1 {
+        font-size: 40px;
+        font-weight: 800;
+        margin: 0;
+      }
+      #hotseat .sub,
+      #hotseat .hint,
+      #hotseat .last {
+        color: #8b90a0;
+        margin: 6px 0 18px;
+      }
+      #hotseat .last {
+        color: #f2efe8;
+      }
+      #hotseat .up-next {
+        display: grid;
+        grid-template-columns: 1fr auto 1fr;
+        align-items: center;
+        gap: 12px;
+        background: #262a35;
+        border-radius: 12px;
+        padding: 18px;
+        margin-bottom: 12px;
+      }
+      #hotseat .up-next.empty {
+        display: block;
+        text-align: center;
+        color: #8b90a0;
+      }
+      #hotseat .fighter {
+        text-align: center;
+      }
+      #hotseat .fighter .look.big {
+        width: 56px;
+        height: 56px;
+        margin: 0 auto 6px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        font-size: 32px;
+      }
+      #hotseat .side-0 .look.big {
+        background: #7ed957;
+      }
+      #hotseat .side-1 .look.big {
+        background: #c084fc;
+      }
+      #hotseat .fighter-name {
+        font-size: 22px;
+        font-weight: 700;
+      }
+      #hotseat .side-0 .fighter-name {
+        color: #7ed957;
+      }
+      #hotseat .side-1 .fighter-name {
+        color: #c084fc;
+      }
+      #hotseat .keys {
+        color: #8b90a0;
+        font-size: 13px;
+        margin-top: 4px;
+      }
+      #hotseat .vs {
+        font-size: 20px;
+        font-weight: 800;
+        color: #8b90a0;
+      }
+      #hotseat table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 8px 0 12px;
+      }
+      #hotseat th {
+        text-align: left;
+        color: #8b90a0;
+        font-weight: 500;
+        font-size: 13px;
+        padding: 4px 6px;
+      }
+      #hotseat td {
+        padding: 4px 6px;
+        border-top: 1px solid #262a35;
+      }
+      #hotseat tr.playing td {
+        background: rgba(255, 255, 255, 0.03);
+      }
+      #hotseat td.where {
+        color: #8b90a0;
+        font-size: 13px;
+        white-space: nowrap;
+      }
+      #hotseat td.num {
+        text-align: center;
+        font-variant-numeric: tabular-nums;
+      }
+      #hotseat button,
+      #hotseat input[type='text'] {
+        font: inherit;
+        color: #f2efe8;
+        background: #262a35;
+        border: 1px solid #3a3f4d;
+        border-radius: 6px;
+        padding: 7px 12px;
+      }
+      #hotseat button {
+        cursor: pointer;
+      }
+      #hotseat button:hover:not(:disabled) {
+        background: #323746;
+      }
+      #hotseat button:disabled {
+        opacity: 0.4;
+        cursor: default;
+      }
+      #hotseat td.name input {
+        width: 170px;
+        box-sizing: border-box;
+        background: transparent;
+        border-color: transparent;
+      }
+      #hotseat td.name input:hover,
+      #hotseat td.name input:focus {
+        border-color: #3a3f4d;
+      }
+      #hotseat button.look {
+        font-size: 20px;
+        padding: 2px 8px;
+        line-height: 1.4;
+      }
+      #hotseat button.remove {
+        background: transparent;
+        border-color: transparent;
+        color: #8b90a0;
+      }
+      #hotseat .add {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 14px;
+      }
+      #hotseat .add input {
+        flex: 1;
+        min-width: 0;
+      }
+      #hotseat .lengths {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 18px;
+        color: #8b90a0;
+      }
+      #hotseat .lengths button.on {
+        background: #f2efe8;
+        color: #16181f;
+      }
+      #hotseat .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      #hotseat button.primary {
+        background: #7ed957;
+        border-color: #7ed957;
+        color: #16181f;
+        font-weight: 700;
+      }
+      #hotseat button.primary:hover:not(:disabled) {
+        background: #95e573;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="game"></canvas>
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>

@@ -221,6 +221,11 @@ const TICK = 1 / 60;
 const SLOWMO_DURATION = 0.6;
 const SLOWMO_SCALE = 0.2;
 let slowmo = 0;
+// Every other hit (and a shield block) freezes the action for a few frames,
+// so it lands with a thump. The screen keeps shaking through the freeze.
+const HITSTOP = 0.05;
+const BLOCKSTOP = 0.035;
+let hitstop = 0;
 let lastSecondShown = 0;
 let accumulator = 0;
 let last = performance.now();
@@ -242,7 +247,9 @@ function frame(now: number): void {
   } else {
     const match = screen;
     music.setPaused(match.paused);
-    if (!match.paused) {
+    if (!match.paused && hitstop > 0) {
+      hitstop = Math.max(0, hitstop - elapsed);
+    } else if (!match.paused) {
       accumulator += slowmo > 0 ? elapsed * SLOWMO_SCALE : elapsed;
       slowmo = Math.max(0, slowmo - elapsed);
       while (accumulator >= TICK) {
@@ -252,6 +259,12 @@ function frame(now: number): void {
         renderer.handleEvents(s.events, s);
         sound.handleEvents(s.events, s);
         if (s.events.some((e) => e.type === 'hit' && e.hits >= s.cfg.round.hitsToLose)) slowmo = SLOWMO_DURATION;
+        else if (s.events.some((e) => e.type === 'hit')) hitstop = HITSTOP;
+        else if (s.events.some((e) => e.type === 'shieldBlock')) hitstop = BLOCKSTOP;
+        if (hitstop > 0) {
+          accumulator = 0;
+          break;
+        }
       }
       renderer.update(slowmo > 0 ? elapsed * 0.35 : elapsed);
       // Tick through the last ten seconds of a round.

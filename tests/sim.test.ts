@@ -242,6 +242,54 @@ describe('firing', () => {
   });
 });
 
+describe('near misses', () => {
+  // A bullet from P1 flying east past P2 (at 15, 12), `offset` units off their centre line.
+  function flyBy(offset: number): { s: GameState; nearMisses: number } {
+    const s = playing();
+    placePlayer(s, 0, { x: 4, y: 4 });
+    placePlayer(s, 1, { x: 15, y: 12 });
+    s.bullets.push({ id: 900, owner: 0, pos: { x: 13, y: 12 + offset }, vel: { x: 8, y: 0 }, age: 0, lifetime: 1, radius: 0.15, bounces: 0, closestGap: Infinity, nearMissed: false });
+    let nearMisses = 0;
+    for (let t = 0; t < 60; t++) {
+      step(s, [NO_INPUT, NO_INPUT]);
+      nearMisses += s.events.filter((e) => e.type === 'nearMiss' && e.player === 1).length;
+    }
+    return { s, nearMisses };
+  }
+
+  it('counts a bullet that just misses, once', () => {
+    const { s, nearMisses } = flyBy(0.9); // passes 0.25 units from P2's edge
+    expect(s.players[1].hits).toBe(0);
+    expect(nearMisses).toBe(1);
+    expect(s.players[1].nearMisses).toBe(1);
+  });
+
+  it('ignores bullets that pass well clear', () => {
+    expect(flyBy(1.3).nearMisses).toBe(0);
+  });
+
+  it('a hit is not a near miss', () => {
+    const { s, nearMisses } = flyBy(0.3);
+    expect(s.players[1].hits).toBe(1);
+    expect(nearMisses).toBe(0);
+  });
+
+  it('counts a bullet that stops at a wall right beside its target', () => {
+    const s = playing();
+    placePlayer(s, 0, { x: 8, y: 4 });
+    placePlayer(s, 1, { x: 12.7, y: 7.5 }); // pressed against the far side of the wall
+    s.bullets.push({ id: 901, owner: 0, pos: { x: 10, y: 7.5 }, vel: { x: 8, y: 0 }, age: 0, lifetime: 1, radius: 0.15, bounces: 0, closestGap: Infinity, nearMissed: false });
+    const events: string[] = [];
+    for (let t = 0; t < 30; t++) {
+      step(s, [NO_INPUT, NO_INPUT]);
+      events.push(...s.events.map((e) => e.type));
+    }
+    expect(events).toContain('wallHit');
+    expect(events).toContain('nearMiss');
+    expect(s.players[1].hits).toBe(0);
+  });
+});
+
 describe('rounds and match', () => {
   function knockOut(s: GameState, loser: 0 | 1) {
     s.players[loser].hits = CONFIG.round.hitsToLose - 1;

@@ -228,7 +228,7 @@ describe('v2 power-ups', () => {
     // A bouncing bullet heading for the left outer wall, players well clear.
     placePlayer(s, 0, { x: 12, y: 2 });
     placePlayer(s, 1, { x: 12, y: 14 });
-    s.bullets.push({ id: 500, owner: 0, pos: { x: 2, y: 8 }, vel: { x: -8, y: 0 }, age: 0, lifetime: 5, radius: 0.15, bounces: 1 });
+    s.bullets.push({ id: 500, owner: 0, pos: { x: 2, y: 8 }, vel: { x: -8, y: 0 }, age: 0, lifetime: 5, radius: 0.15, bounces: 1, closestGap: Infinity, nearMissed: false });
     let bounces = 0;
     let wallHits = 0;
     for (let t = 0; t < 60 * 4; t++) {
@@ -295,11 +295,11 @@ describe('v2 power-ups', () => {
     placePlayer(s, 0, { x: 6, y: 8 });
     placePlayer(s, 1, { x: 12, y: 8 });
     // A shot that passes 0.8 units from their centre: a miss normally.
-    s.bullets.push({ id: 600, owner: 0, pos: { x: 8, y: 8.8 }, vel: { x: 8, y: 0 }, age: 0, lifetime: 1, radius: 0.15, bounces: 0 });
+    s.bullets.push({ id: 600, owner: 0, pos: { x: 8, y: 8.8 }, vel: { x: 8, y: 0 }, age: 0, lifetime: 1, radius: 0.15, bounces: 0, closestGap: Infinity, nearMissed: false });
     run(s, 60);
     expect(s.players[1].hits).toBe(0);
     applyPowerUp(s, 0, 'bigTarget');
-    s.bullets.push({ id: 601, owner: 0, pos: { x: 8, y: 8.8 }, vel: { x: 8, y: 0 }, age: 0, lifetime: 1, radius: 0.15, bounces: 0 });
+    s.bullets.push({ id: 601, owner: 0, pos: { x: 8, y: 8.8 }, vel: { x: 8, y: 0 }, age: 0, lifetime: 1, radius: 0.15, bounces: 0, closestGap: Infinity, nearMissed: false });
     run(s, 60);
     expect(s.players[1].hits).toBe(1);
   });

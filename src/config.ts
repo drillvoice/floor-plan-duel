@@ -45,6 +45,12 @@ export const CONFIG = {
     cooldown: 0.6,
   },
 
+  // A bullet that passes this close to a player's edge without hitting them
+  // counts as a near miss (a "Close!" callout and a clutch dodge on the results).
+  nearMiss: {
+    margin: 0.4,
+  },
+
   dodge: {
     distance: 2.5,
     duration: 0.15,

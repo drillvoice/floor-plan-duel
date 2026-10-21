@@ -88,6 +88,7 @@ export interface PlayerState {
   lastMove: Vec2; // unit vector of the last movement input; where a dodge goes when standing still
   hits: number; // hits taken this round
   roundWins: number;
+  nearMisses: number; // bullets that just missed this player, over the whole match
   fireCooldown: number;
   dodgeCharges: number;
   dodgeCooldown: number; // time until the next charge comes back
@@ -105,6 +106,8 @@ export interface Bullet {
   lifetime: number;
   radius: number;
   bounces: number; // wall bounces left (Bouncer)
+  closestGap: number; // nearest it has come to its target's edge so far
+  nearMissed: boolean; // already counted as a near miss
 }
 
 export type Phase = 'countdown' | 'playing' | 'roundOver' | 'matchOver';
@@ -112,6 +115,7 @@ export type Phase = 'countdown' | 'playing' | 'roundOver' | 'matchOver';
 export type GameEvent =
   | { type: 'fire'; player: PlayerIndex; pos: Vec2 }
   | { type: 'hit'; player: PlayerIndex; pos: Vec2; hits: number }
+  | { type: 'nearMiss'; player: PlayerIndex; pos: Vec2 }
   | { type: 'wallHit'; pos: Vec2 }
   | { type: 'bounce'; pos: Vec2 }
   | { type: 'dodge'; player: PlayerIndex; from: Vec2; dir: Vec2 }

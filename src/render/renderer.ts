@@ -57,6 +57,9 @@ interface Callout {
 }
 
 const CALLOUT_LIFE = 1.4;
+const NEAR_MISS_GLOW = 0.3;
+const NEAR_MISS_COLOR = '#ffe066';
+const NEAR_MISS_TEXT = ['Close!', 'Whew!', 'Too close!', 'Not today!', 'Missed me!'];
 
 // What a pickup says over the player who took it, and over the opponent for curses.
 const PICKUP_TEXT: Record<PowerUpKind, { self: string; victim?: string }> = {
@@ -108,6 +111,7 @@ export class Renderer {
   private origin = { x: 0, y: 0 };
   private sideW = SIDE_MIN;
   private hitFlash = [0, 0];
+  private nearMissGlow = [0, 0];
   private trails: Trail[] = [];
   private pendingDash: { player: PlayerIndex; from: Vec2 }[] = [];
   private particles: Particle[] = [];
@@ -149,6 +153,15 @@ export class Renderer {
           this.shake = Math.max(this.shake, final ? 1 : 0.55);
           if (final) this.screenFlash = 0.35;
           this.burst(e.pos, COLORS.players[e.player], final ? 28 : 14, final ? 7 : 5);
+          break;
+        }
+        case 'nearMiss': {
+          // Several in quick succession for one player only say it once.
+          if (!this.callouts.some((c) => c.player === e.player && c.color === NEAR_MISS_COLOR && c.age < 0.5)) {
+            this.callout(e.player, NEAR_MISS_TEXT[Math.floor(Math.random() * NEAR_MISS_TEXT.length)], NEAR_MISS_COLOR);
+          }
+          this.nearMissGlow[e.player] = NEAR_MISS_GLOW;
+          this.rings.push({ pos: { ...state.players[e.player].pos }, age: 0, color: NEAR_MISS_COLOR });
           break;
         }
         case 'shieldBlock':
@@ -199,6 +212,7 @@ export class Renderer {
   // Advance purely visual effects by real elapsed time.
   update(dt: number): void {
     this.hitFlash = this.hitFlash.map((t) => Math.max(0, t - dt));
+    this.nearMissGlow = this.nearMissGlow.map((t) => Math.max(0, t - dt));
     for (const t of this.trails) t.age += dt;
     this.trails = this.trails.filter((t) => t.age < 0.35);
     for (const p of this.particles) {
@@ -501,6 +515,16 @@ export class Renderer {
     ctx.arc(nub.x, nub.y, r * 0.22, 0, Math.PI * 2);
     ctx.fill();
 
+    if (this.nearMissGlow[i] > 0) {
+      // A bright rim that flares out and fades after a near miss.
+      const t = 1 - this.nearMissGlow[i] / NEAR_MISS_GLOW;
+      ctx.strokeStyle = hexAlpha(NEAR_MISS_COLOR, 1 - t);
+      ctx.lineWidth = 4 * (1 - t) + 1;
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, r + 3 + t * 10, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
     if (this.hitFlash[i] > 0) {
       ctx.fillStyle = `rgba(255,255,255,${this.hitFlash[i] / 0.18})`;
       ctx.beginPath();
@@ -748,6 +772,12 @@ export class Renderer {
     ctx.fillStyle = COLORS.text;
     ctx.font = '500 18px system-ui, sans-serif';
     ctx.fillText(sub, this.width / 2, this.height / 2 + 32);
+    if (state.phase === 'matchOver' && !paused) {
+      const [a, b] = state.players.map((p) => p.nearMisses);
+      ctx.fillStyle = NEAR_MISS_COLOR;
+      ctx.font = '600 16px system-ui, sans-serif';
+      ctx.fillText(`Clutch dodges: ${this.names[0]} ${a} · ${this.names[1]} ${b}`, this.width / 2, this.height / 2 + 68);
+    }
   }
 
   // Plain background behind HTML screens such as the hotseat lobby.

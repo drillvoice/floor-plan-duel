@@ -46,6 +46,11 @@ export class Sound {
           this.tone(final ? 90 : 140, final ? 0.5 : 0.25, 'sine', 0.5, 0.4);
           break;
         }
+        case 'nearMiss':
+          // A fast falling whoosh, like a bullet zipping past an ear.
+          this.sweepNoise(0.12, 5000, 900, 0.18);
+          this.tone(1800, 0.1, 'sine', 0.05, 0.5);
+          break;
         case 'shieldBlock':
           this.tone(1400, 0.25, 'triangle', 0.25, 0.7);
           this.tone(2100, 0.2, 'sine', 0.12, 0.8);
@@ -57,7 +62,7 @@ export class Sound {
           this.noiseBurst(0.03, 2500, 0.05);
           break;
         case 'dodge':
-          this.sweepNoise(0.15);
+          this.sweepNoise(0.15, 600, 3500, 0.25);
           break;
         case 'pickup':
           [523, 659, 784].forEach((f, n) => this.tone(f, 0.12, 'triangle', 0.18, 1, n * 0.06));
@@ -119,7 +124,7 @@ export class Sound {
     src.stop(t + dur + 0.02);
   }
 
-  private sweepNoise(dur: number): void {
+  private sweepNoise(dur: number, from: number, to: number, vol: number): void {
     const ctx = this.ctx;
     if (!ctx || !this.master || !this.noise || this.muted) return;
     const t = ctx.currentTime;
@@ -128,10 +133,10 @@ export class Sound {
     const filter = ctx.createBiquadFilter();
     filter.type = 'bandpass';
     filter.Q.value = 2;
-    filter.frequency.setValueAtTime(600, t);
-    filter.frequency.exponentialRampToValueAtTime(3500, t + dur);
+    filter.frequency.setValueAtTime(from, t);
+    filter.frequency.exponentialRampToValueAtTime(to, t + dur);
     const gain = ctx.createGain();
-    gain.gain.setValueAtTime(0.25, t);
+    gain.gain.setValueAtTime(vol, t);
     gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
     src.connect(filter).connect(gain).connect(this.master);
     src.start(t);

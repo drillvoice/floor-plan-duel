@@ -20,6 +20,7 @@ npm run build    # static build in dist/
 | Shoot (hold) | G | . (full stop) |
 | Dodge right | H | / (slash) |
 | Pause | Esc | Esc |
+| Mute sound | M | M |
 
 Dodges are sideways relative to the way you face, and you always face your opponent. The title screen doubles as a key test: hold the keys you'd press together and check they all light up.
 

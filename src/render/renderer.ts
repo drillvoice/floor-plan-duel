@@ -21,6 +21,21 @@ const PLAYER_NAMES = ['P1', 'P2'] as const;
 const HUD_HEIGHT = 64;
 const MARGIN = 24;
 
+interface Particle {
+  pos: Vec2;
+  vel: Vec2;
+  age: number;
+  life: number;
+  color: string;
+  size: number;
+}
+
+interface Ring {
+  pos: Vec2;
+  age: number;
+  color: string;
+}
+
 interface Trail {
   from: Vec2;
   to: Vec2;
@@ -37,6 +52,10 @@ export class Renderer {
   private hitFlash = [0, 0];
   private trails: Trail[] = [];
   private pendingDash: { player: PlayerIndex; from: Vec2 }[] = [];
+  private particles: Particle[] = [];
+  private rings: Ring[] = [];
+  private shake = 0;
+  private screenFlash = 0;
 
   constructor(private canvas: HTMLCanvasElement) {
     this.ctx = canvas.getContext('2d')!;
@@ -58,9 +77,33 @@ export class Renderer {
   // Feed the events from each simulation step so effects can react.
   handleEvents(events: GameEvent[], state: GameState): void {
     for (const e of events) {
-      if (e.type === 'hit') this.hitFlash[e.player] = 0.18;
-      if (e.type === 'dodge') this.pendingDash.push({ player: e.player, from: e.from });
-      if (e.type === 'roundStart') this.trails = [];
+      switch (e.type) {
+        case 'hit': {
+          const final = e.hits >= state.cfg.round.hitsToLose;
+          this.hitFlash[e.player] = 0.18;
+          this.shake = Math.max(this.shake, final ? 1 : 0.55);
+          if (final) this.screenFlash = 0.35;
+          this.burst(e.pos, COLORS.players[e.player], final ? 28 : 14, final ? 7 : 5);
+          break;
+        }
+        case 'shieldBlock':
+          this.shake = Math.max(this.shake, 0.3);
+          this.burst(e.pos, CATEGORY_COLORS.buff, 12, 4);
+          break;
+        case 'wallHit':
+          this.burst(e.pos, COLORS.wall, 4, 2);
+          break;
+        case 'dodge':
+          this.pendingDash.push({ player: e.player, from: e.from });
+          break;
+        case 'pickup':
+          this.rings.push({ pos: e.pos, age: 0, color: powerUpColor(e.kind) });
+          break;
+        case 'roundStart':
+          this.trails = [];
+          this.particles = [];
+          break;
+      }
     }
     // Close trails once the dash has finished.
     this.pendingDash = this.pendingDash.filter((d) => {
@@ -75,6 +118,32 @@ export class Renderer {
     this.hitFlash = this.hitFlash.map((t) => Math.max(0, t - dt));
     for (const t of this.trails) t.age += dt;
     this.trails = this.trails.filter((t) => t.age < 0.35);
+    for (const p of this.particles) {
+      p.age += dt;
+      p.pos = add(p.pos, scale(p.vel, dt));
+      p.vel = scale(p.vel, Math.pow(0.02, dt));
+    }
+    this.particles = this.particles.filter((p) => p.age < p.life);
+    for (const r of this.rings) r.age += dt;
+    this.rings = this.rings.filter((r) => r.age < 0.4);
+    this.shake = Math.max(0, this.shake - dt * 2.5);
+    this.screenFlash = Math.max(0, this.screenFlash - dt);
+  }
+
+  // Visual-only randomness is fine here: the renderer never touches game state.
+  private burst(pos: Vec2, color: string, count: number, speed: number): void {
+    for (let n = 0; n < count; n++) {
+      const a = Math.random() * Math.PI * 2;
+      const v = speed * (0.4 + Math.random() * 0.8);
+      this.particles.push({
+        pos: { ...pos },
+        vel: { x: Math.cos(a) * v, y: Math.sin(a) * v },
+        age: 0,
+        life: 0.3 + Math.random() * 0.3,
+        color,
+        size: 0.06 + Math.random() * 0.08,
+      });
+    }
   }
 
   private layout(state: GameState): void {
@@ -97,11 +166,22 @@ export class Renderer {
     this.layout(state);
     ctx.fillStyle = COLORS.background;
     ctx.fillRect(0, 0, this.width, this.height);
+    ctx.save();
+    if (this.shake > 0) {
+      const mag = this.shake * this.shake * this.scale * 0.5;
+      ctx.translate((Math.random() * 2 - 1) * mag, (Math.random() * 2 - 1) * mag);
+    }
     this.drawArena(state);
     this.drawTrails();
     for (const pu of state.powerUps) this.drawPowerUp(state, pu);
     for (const b of state.bullets) this.drawBullet(state, b.owner, b.pos, b.radius, b.age, b.lifetime);
     for (const i of [0, 1] as const) this.drawPlayer(state, i);
+    this.drawEffects();
+    ctx.restore();
+    if (this.screenFlash > 0) {
+      ctx.fillStyle = `rgba(255,255,255,${this.screenFlash * 0.8})`;
+      ctx.fillRect(0, 0, this.width, this.height);
+    }
     this.drawHud(state);
     this.drawOverlay(state, paused);
   }
@@ -136,6 +216,26 @@ export class Renderer {
       ctx.lineTo(b.x, b.y);
     }
     ctx.stroke();
+  }
+
+  private drawEffects(): void {
+    const ctx = this.ctx;
+    for (const p of this.particles) {
+      const c = this.toScreen(p.pos);
+      ctx.fillStyle = hexAlpha(p.color, 1 - p.age / p.life);
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, p.size * this.scale, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    for (const r of this.rings) {
+      const c = this.toScreen(r.pos);
+      const t = r.age / 0.4;
+      ctx.strokeStyle = hexAlpha(r.color, 1 - t);
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, (0.5 + t * 1.5) * this.scale, 0, Math.PI * 2);
+      ctx.stroke();
+    }
   }
 
   private drawTrails(): void {
@@ -410,7 +510,7 @@ export class Renderer {
     ctx.fillText('Floor Plan Duel', cx, this.height * 0.2);
     ctx.font = '500 20px system-ui, sans-serif';
     ctx.fillStyle = COLORS.muted;
-    ctx.fillText('Press Enter to start', cx, this.height * 0.2 + 52);
+    ctx.fillText('Press Enter to start  ·  M to mute', cx, this.height * 0.2 + 52);
 
     const top = this.height * 0.42;
     const colW = Math.min(360, this.width / 2 - 20);

@@ -2,6 +2,7 @@ import { KEY_BINDINGS } from './config';
 import { Keyboard, KeyboardPlayer } from './input/keyboard';
 import type { InputSource } from './input/types';
 import { THE_FLAT } from './maps/theFlat';
+import { Sound } from './render/audio';
 import { Renderer } from './render/renderer';
 import { createGame, step } from './sim/step';
 import type { GameState, MapData } from './sim/types';
@@ -11,6 +12,7 @@ type Screen = { kind: 'title' } | { kind: 'match'; state: GameState; map: MapDat
 const canvas = document.getElementById('game') as HTMLCanvasElement;
 const renderer = new Renderer(canvas);
 const keyboard = new Keyboard();
+const sound = new Sound();
 const inputs: [InputSource, InputSource] = [
   new KeyboardPlayer(keyboard, KEY_BINDINGS.p1),
   new KeyboardPlayer(keyboard, KEY_BINDINGS.p2),
@@ -26,6 +28,11 @@ function startMatch(map: MapData): void {
 }
 
 keyboard.onPress((code) => {
+  sound.unlock();
+  if (code === 'KeyM') {
+    sound.toggleMute();
+    return;
+  }
   if (screen.kind === 'title') {
     if (code === 'Enter' || code === 'Space') startMatch(THE_FLAT);
     return;
@@ -52,6 +59,11 @@ window.addEventListener('blur', () => {
 // Fixed-timestep loop: the sim always advances in 1/60 s ticks regardless of
 // display refresh rate.
 const TICK = 1 / 60;
+// After a knockout the sim runs slowly for a moment (presentation only: the
+// sim itself still advances in identical ticks).
+const SLOWMO_DURATION = 0.6;
+const SLOWMO_SCALE = 0.2;
+let slowmo = 0;
 let accumulator = 0;
 let last = performance.now();
 
@@ -65,14 +77,17 @@ function frame(now: number): void {
   } else {
     const match = screen;
     if (!match.paused) {
-      accumulator += elapsed;
+      accumulator += slowmo > 0 ? elapsed * SLOWMO_SCALE : elapsed;
+      slowmo = Math.max(0, slowmo - elapsed);
       while (accumulator >= TICK) {
         accumulator -= TICK;
         const s = match.state;
         step(s, [inputs[0].sample(s, 0), inputs[1].sample(s, 1)]);
         renderer.handleEvents(s.events, s);
+        sound.handleEvents(s.events, s);
+        if (s.events.some((e) => e.type === 'hit' && e.hits >= s.cfg.round.hitsToLose)) slowmo = SLOWMO_DURATION;
       }
-      renderer.update(elapsed);
+      renderer.update(slowmo > 0 ? elapsed * 0.35 : elapsed);
     } else {
       accumulator = 0;
     }

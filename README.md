@@ -23,6 +23,7 @@ On the title screen:
 - **Enter** starts a match, best of 5 rounds, 3 hits to lose a round.
 - **1 / 2** switch each player between Human and Bot (Easy, Normal, Hard). Two bots will play each other.
 - Each player's **dodge key** cycles their look: a plain circle or a cute icon inside it.
+- **H** opens hotseat mode, for a group taking turns (see below).
 - **Tab** changes the map; **E** opens the map editor (on a saved map, or the one you edited last).
 - **M** mutes all sound; **N** turns the music on or off (also works mid-match). The music speeds up as the round goes on and gets busier near the end.
 - The key caps light up while held: use this to check your keyboard can register everyone's keys at once.
@@ -43,6 +44,15 @@ Power-ups flash a ring where they're about to appear, and a ring around each one
 - **Red** (curse on your opponent): Molasses (slows them), Topsy-Turvy (reverses their controls), Big Target (makes them easier to hit).
 
 A label pops up saying what each one did, and the icons under each player's health show what's active.
+
+## Hotseat
+
+For a group sharing one laptop. Press **H** on the title screen, add everyone's names (and click a look to change it), choose how many rounds each match is, and press Enter.
+
+- Two players are up at a time: the first on the left keys, the second on the right keys.
+- The winner stays on their side. The loser goes to the back of the line and the next person takes their keys.
+- The table tracks everyone's wins, losses and best winning streak, with a 🏆 for the leader. Players can be added or removed between matches.
+- The session is saved in the browser, so a reload doesn't lose the scores. **Reset scores** starts afresh with the same people.
 
 ## Map editor
 

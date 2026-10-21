@@ -173,9 +173,9 @@ The MVP proves one thing: dodging slow auto-aimed bullets on a shared laptop is 
 - [ ] Bot at three difficulties, plus headless bot-vs-bot simulation
 - [ ] Basic juice: hit flash, screen shake, dash trail, simple synthesised sound effects
 
-**v2** — the rest of the power-up set, photo/line-drawing import, a few more built-in maps, a "make it a LOT more fun" polish pass, and:
+**v2** — the rest of the power-up set (done), photo/line-drawing import, a few more built-in maps, a "make it a LOT more fun" polish pass, and:
 
-- **Hotseat mode:** still 1v1, but for a group taking turns. Players enter their names, the loser of each match swaps out for the next person in the queue, and a scoreboard tracks who's playing and everyone's wins.
+- **Hotseat mode (done):** still 1v1, but for a group taking turns. Players enter their names, the loser of each match swaps out for the next person in the queue, and a scoreboard tracks who's playing and everyone's wins.
 - **Photo looks:** use a picture of your face inside your player circle, alongside the icon looks.
 
 **v3** — mobile touch controls and two-phone play over a small relay server; maybe a first-person mode rendered from the same walls.

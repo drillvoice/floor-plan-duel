@@ -91,6 +91,9 @@ export class Renderer {
   private suddenDeathBanner = 0;
   // Each player's chosen look (see looks.ts); set by the app.
   looks: [string, string] = ['', ''];
+  // Names shown in the HUD and results (player names in hotseat).
+  names: [string, string] = ['P1', 'P2'];
+  matchOverHint = 'Enter for a rematch · Esc for title';
 
   constructor(private canvas: HTMLCanvasElement) {
     this.ctx = canvas.getContext('2d')!;
@@ -553,11 +556,13 @@ export class Renderer {
       ctx.fillStyle = COLORS.players[i];
       ctx.font = '700 22px system-ui, sans-serif';
       ctx.textAlign = left ? 'left' : 'right';
-      ctx.fillText(PLAYER_NAMES[i], x, 24);
-      // Health pips.
+      const name = this.names[i];
+      ctx.fillText(name, x, 24);
+      // Health pips, after the name.
+      const pipsAt = Math.max(52, ctx.measureText(name).width + 22);
       for (let h = 0; h < cfg.round.hitsToLose; h++) {
         const alive = h < cfg.round.hitsToLose - p.hits;
-        const px = x + dir * (52 + h * 22);
+        const px = x + dir * (pipsAt + h * 22);
         ctx.fillStyle = alive ? COLORS.players[i] : 'rgba(255,255,255,0.12)';
         ctx.beginPath();
         ctx.arc(px, 24, 8, 0, Math.PI * 2);
@@ -621,7 +626,7 @@ export class Renderer {
   }
 
   private label(i: PlayerIndex): string {
-    return `${this.looks[i]} ${PLAYER_NAMES[i]}`.trim();
+    return `${this.looks[i]} ${this.names[i]}`.trim();
   }
 
   private drawOverlay(state: GameState, paused: boolean): void {
@@ -639,7 +644,7 @@ export class Renderer {
       sub = w === null ? 'Replaying the round' : '';
     } else if (state.phase === 'matchOver' && state.matchWinner !== null) {
       title = `${this.label(state.matchWinner)} wins!`;
-      sub = 'Enter for a rematch · Esc for title';
+      sub = this.matchOverHint;
     } else return;
 
     const ctx = this.ctx;
@@ -654,6 +659,12 @@ export class Renderer {
     ctx.fillStyle = COLORS.text;
     ctx.font = '500 18px system-ui, sans-serif';
     ctx.fillText(sub, this.width / 2, this.height / 2 + 32);
+  }
+
+  // Plain background behind HTML screens such as the hotseat lobby.
+  drawBackdrop(): void {
+    this.ctx.fillStyle = COLORS.background;
+    this.ctx.fillRect(0, 0, this.width, this.height);
   }
 
   // Title screen with a live key test, so ghosting shows up before a match.
@@ -675,7 +686,11 @@ export class Renderer {
     ctx.fillText(`Map: ${mapName}`, cx, this.height * 0.2 + 92);
     ctx.fillStyle = COLORS.muted;
     ctx.font = '400 13px system-ui, sans-serif';
-    ctx.fillText(`${mapCount > 1 ? 'Tab to change map  ·  ' : ''}E to open the map editor`, cx, this.height * 0.2 + 114);
+    ctx.fillText(
+      `${mapCount > 1 ? 'Tab to change map  ·  ' : ''}E to open the map editor  ·  H for hotseat (take turns, winner stays on)`,
+      cx,
+      this.height * 0.2 + 114,
+    );
 
     const top = this.height * 0.42;
     const colW = Math.min(360, this.width / 2 - 20);

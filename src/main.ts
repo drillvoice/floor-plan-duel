@@ -1,5 +1,5 @@
 import { BotPlayer, type Difficulty } from './bot/bot';
-import { KEY_BINDINGS } from './config';
+import { CONFIG, KEY_BINDINGS } from './config';
 import { Keyboard, KeyboardPlayer } from './input/keyboard';
 import type { InputSource } from './input/types';
 import { lastEditedMap, listSavedMaps } from './maps/storage';
@@ -9,13 +9,16 @@ import { cycleLook, loadLooks, saveLooks } from './render/looks';
 import { Music } from './render/music';
 import { Renderer } from './render/renderer';
 import { Editor } from './screens/editor';
+import { HotseatLobby } from './screens/hotseat';
 import { createGame, step } from './sim/step';
 import type { GameState, MapData } from './sim/types';
 
+type MatchFrom = 'title' | 'editor' | 'hotseat';
 type Screen =
   | { kind: 'title' }
   | { kind: 'editor' }
-  | { kind: 'match'; state: GameState; map: MapData; paused: boolean; from: 'title' | 'editor' };
+  | { kind: 'hotseat' }
+  | { kind: 'match'; state: GameState; map: MapData; paused: boolean; from: MatchFrom; recorded: boolean };
 
 const canvas = document.getElementById('game') as HTMLCanvasElement;
 const renderer = new Renderer(canvas);
@@ -82,17 +85,53 @@ const editor = new Editor(canvas, {
   },
 });
 
+const lobby = new HotseatLobby({
+  onStart: (left, right, roundsToWin) => {
+    lobby.close();
+    startMatch(selectedMap(), 'hotseat', { roundsToWin, looks: [left.look, right.look], names: [left.name, right.name] });
+  },
+  onExit: () => {
+    lobby.close();
+    screen = { kind: 'title' };
+  },
+});
+
+function openLobby(): void {
+  screen = { kind: 'hotseat' };
+  lobby.open();
+  keyboard.clear();
+}
+
 function openEditor(map: MapData): void {
   screen = { kind: 'editor' };
   editor.open(map);
   keyboard.clear();
 }
 
-function startMatch(map: MapData, from: 'title' | 'editor' = 'title'): void {
+interface HotseatMatch {
+  roundsToWin: number;
+  looks: [string, string];
+  names: [string, string];
+}
+
+function startMatch(map: MapData, from: MatchFrom = 'title', hotseat?: HotseatMatch): void {
   // The seed is picked here, outside the sim; the sim itself never reads the clock.
   const seed = (Date.now() ^ (performance.now() * 1000)) >>> 0;
-  inputs = makeInputs(seed);
-  screen = { kind: 'match', state: createGame(map, seed), map, paused: false, from };
+  let cfg = CONFIG;
+  if (hotseat) {
+    // Hotseat is always two people on the keyboard, with their own names and looks.
+    inputs = [new KeyboardPlayer(keyboard, KEY_BINDINGS.p1), new KeyboardPlayer(keyboard, KEY_BINDINGS.p2)];
+    cfg = { ...CONFIG, round: { ...CONFIG.round, roundsToWin: hotseat.roundsToWin } };
+    renderer.looks = hotseat.looks;
+    renderer.names = hotseat.names;
+    renderer.matchOverHint = 'Enter or Esc: back to the hotseat line-up';
+  } else {
+    inputs = makeInputs(seed);
+    renderer.looks = looks;
+    renderer.names = ['P1', 'P2'];
+    renderer.matchOverHint = 'Enter for a rematch · Esc for title';
+  }
+  screen = { kind: 'match', state: createGame(map, seed, cfg), map, paused: false, from, recorded: false };
   keyboard.clear();
   music.start();
 }
@@ -100,6 +139,7 @@ function startMatch(map: MapData, from: 'title' | 'editor' = 'title'): void {
 function leaveMatch(match: Extract<Screen, { kind: 'match' }>): void {
   music.stop();
   if (match.from === 'editor') openEditor(editor.currentMap());
+  else if (match.from === 'hotseat') openLobby();
   else screen = { kind: 'title' };
 }
 
@@ -114,7 +154,7 @@ keyboard.onPress((code) => {
     if (music.enabled && screen.kind === 'match' && screen.state.phase !== 'matchOver') music.start();
     return;
   }
-  if (screen.kind === 'editor') return; // the editor handles its own keys
+  if (screen.kind === 'editor' || screen.kind === 'hotseat') return; // they handle their own keys
   if (screen.kind === 'title') {
     if (code === 'Enter' || code === 'Space') startMatch(selectedMap());
     else if (code === 'Digit1') cycleSlot(0);
@@ -123,7 +163,8 @@ keyboard.onPress((code) => {
       const i = code === KEY_BINDINGS.p1.dodge ? 0 : 1;
       looks[i] = cycleLook(looks[i], 1);
       saveLooks(looks);
-    } else if (code === 'Tab') mapIndex = (mapIndex + 1) % availableMaps().length;
+    } else if (code === 'KeyH') openLobby();
+    else if (code === 'Tab') mapIndex = (mapIndex + 1) % availableMaps().length;
     else if (code === 'KeyE') {
       const map = selectedMap();
       // A saved map opens as itself; from the built-in one, reopen the map
@@ -134,7 +175,9 @@ keyboard.onPress((code) => {
   }
   const match = screen;
   if (match.state.phase === 'matchOver') {
-    if (code === 'Enter') startMatch(match.map, match.from);
+    if (match.from === 'hotseat') {
+      if (code === 'Enter' || code === KEY_BINDINGS.pause) leaveMatch(match);
+    } else if (code === 'Enter') startMatch(match.map, match.from);
     else if (code === KEY_BINDINGS.pause) leaveMatch(match);
     return;
   }
@@ -173,6 +216,9 @@ function frame(now: number): void {
   } else if (screen.kind === 'editor') {
     accumulator = 0;
     editor.draw();
+  } else if (screen.kind === 'hotseat') {
+    accumulator = 0;
+    renderer.drawBackdrop();
   } else {
     const match = screen;
     music.setPaused(match.paused);
@@ -193,7 +239,15 @@ function frame(now: number): void {
       const secondsLeft = Math.ceil(s.cfg.round.timeLimit - s.roundTime);
       if (s.phase === 'playing' && secondsLeft !== lastSecondShown && secondsLeft > 0 && secondsLeft <= 10) sound.tick(secondsLeft);
       lastSecondShown = secondsLeft;
-      if (s.phase === 'matchOver') music.stop();
+      if (s.phase === 'matchOver') {
+        music.stop();
+        // A finished hotseat match goes on the scoreboard (an abandoned one doesn't).
+        if (match.from === 'hotseat' && !match.recorded && s.matchWinner !== null) {
+          const w = s.matchWinner;
+          lobby.record(w, [s.players[w].roundWins, s.players[w === 0 ? 1 : 0].roundWins]);
+          match.recorded = true;
+        }
+      }
       else {
         const over = s.roundTime - s.cfg.round.timeLimit;
         const suddenSteps = over < 0 ? 0 : 1 + Math.floor(over / s.cfg.round.suddenDeathInterval);

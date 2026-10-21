@@ -24,7 +24,9 @@ On the title screen:
 - **1 / 2** switch each player between Human and Bot (Easy, Normal, Hard). Two bots will play each other.
 - Each player's **dodge key** cycles their look: a plain circle or a cute icon inside it.
 - **H** opens hotseat mode, for a group taking turns (see below).
+- **R** turns round modifiers on or off (see below). They start on.
 - **Tab** changes the map; **E** opens the map editor (on a saved map, or the one you edited last).
+- Built-in maps: **The Flat** (two rooms and a hallway), **Studio Apartment** (one open room, quick to the fight), **Bathroom Brawl** (tiny and cramped), **The Office** (cubicles between a meeting room and the boss's office) and **Lights Out** (a dark basement: you see what's near each player, plus bullets, power-ups and muzzle flashes).
 - **M** mutes all sound; **N** turns the music on or off (also works mid-match). The music speeds up as the round goes on and gets busier near the end.
 - **B** toggles full screen (also works mid-match), or use the button in the top-right corner of the menus. Esc leaves full screen too.
 - The key caps light up while held: use this to check your keyboard can register everyone's keys at once.
@@ -38,6 +40,8 @@ On the title screen:
 
 Dodge is a quick dash in the direction you're moving, diagonals included; standing still, it goes the way you last moved. It has a 1.2 s cooldown: the little arrow beside your player shows where a dodge will go, and dims while it recharges. After 90 s a round goes to sudden death and bullets speed up every 5 s.
 
+A bullet that only just misses you pops up a "Close!" and counts as a clutch dodge; the results screen shows each player's total. Bullets that hit a wall leave a splash of the shooter's colour on it, so the walls slowly fill with paint over a match.
+
 Power-ups flash a ring where they're about to appear, and a ring around each one shrinks as it expires:
 
 - **Gold** (lasts the round, stacks): Swift Shot (faster bullets), Long Shot (more range), Trigger Happy (faster firing), Fleet Foot (faster movement), Spare Dodge (a second dodge charge).
@@ -45,6 +49,24 @@ Power-ups flash a ring where they're about to appear, and a ring around each one
 - **Red** (curse on your opponent): Molasses (slows them), Topsy-Turvy (reverses their controls), Big Target (makes them easier to hit).
 
 A label pops up saying what each one did, and the icons under each player's health show what's active.
+
+## Round modifiers
+
+With modifiers on, a slot-machine reel spins before each round and picks a rule for that round only, never the same one twice in a row:
+
+| Modifier | What changes |
+| --- | --- |
+| Giant Bullets | Bullets twice the size, but slower |
+| Power-up Storm | A power-up every 1-2 s, twice as many on the map |
+| One-Hit Wonder | The first hit wins the round |
+| Speed Demons | Players and bullets move faster |
+| Bullet Hell | Fire 2.5 times as fast, slightly shorter range |
+| Sniper Duel | Fast, long-range shots with a slow reload |
+| Bouncy Castle | Every shot bounces twice |
+| Ghost Town | Everyone walks through walls; bullets still stop at them |
+| Dodge Frenzy | Dodge recharges three times as fast |
+
+The modifier's name stays under the round number while you play.
 
 ## Hotseat
 
@@ -77,6 +99,8 @@ Runs bot-vs-bot matches headlessly, much faster than real time, and prints win r
 
 - `--p1 hard --p2 easy` sets each bot separately.
 - `--set path=value` tries a config change without editing any files, and can be repeated: `--set round.hitsToLose=5 --set fire.cooldown=0.9`.
+- `--map 'Bathroom Brawl'` runs on another built-in map (default The Flat).
+- `--modifiers` plays every round under a random modifier and adds a table of round length, hits, shots and sudden-death rate per modifier. Narrow it down with `--set 'modifiers.pool=["giantBullets"]'`.
 - `--json` prints machine-readable output.
 
 All tunable numbers live in `src/config.ts`.
@@ -86,7 +110,7 @@ All tunable numbers live in `src/config.ts`.
 - `src/sim/`: the game rules. A pure fixed 60 Hz `step(state, inputs)` with a seeded RNG and no DOM or clock, so a match is reproducible from its seed and inputs.
 - `src/input/`: keyboard input. `src/bot/`: the bot and A* pathfinding. Both produce the same `{ move, dodge, shoot }` input.
 - `src/render/`: canvas drawing, effects and synthesised sound. Never changes game state.
-- `src/screens/editor.ts`, `src/maps/`: the editor, the built-in map, validation and storage.
+- `src/screens/editor.ts`, `src/maps/`: the editor, the built-in maps, validation and storage.
 - `scripts/sim.ts`: the headless simulator.
 
 For tuning in the browser, `fpd.state` in the developer console is the live match state.

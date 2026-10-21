@@ -5,6 +5,7 @@
 // reads nothing outside its arguments.
 
 import { CONFIG, type Config } from '../config';
+import { configFor, MODIFIERS, pickModifier } from './modifiers';
 import { buildArena, ghostArena, hasLineOfSight, moveCircle, resolveCircle } from './arena';
 import {
   aimLeadFor,
@@ -27,6 +28,8 @@ export function createGame(map: MapData, seed: number, cfg: Config = CONFIG): Ga
   const arena = buildArena(map, cfg);
   const state: GameState = {
     cfg,
+    baseCfg: cfg,
+    modifier: null,
     arena,
     tick: 0,
     phase: 'countdown',
@@ -55,6 +58,7 @@ function newPlayer(): PlayerState {
     lastMove: { x: 0, y: 0 },
     hits: 0,
     roundWins: 0,
+    nearMisses: 0,
     fireCooldown: 0,
     dodgeCharges: 1,
     dodgeCooldown: 0,
@@ -71,6 +75,8 @@ export function spawnFor(state: GameState, player: PlayerIndex): Vec2 {
 }
 
 function startRound(state: GameState): void {
+  state.modifier = pickModifier(state);
+  state.cfg = configFor(state.baseCfg, state.modifier);
   state.phase = 'countdown';
   state.phaseTime = 0;
   state.roundTime = 0;
@@ -88,9 +94,10 @@ function startRound(state: GameState): void {
     p.dash = null;
     p.lastMove = { x: 0, y: 0 };
     p.effects = noEffects(); // round-long upgrades reset each round
+    if (state.modifier) Object.assign(p.effects, MODIFIERS[state.modifier].effects);
   }
   updateFacing(state);
-  state.events.push({ type: 'roundStart', round: state.roundIndex });
+  state.events.push({ type: 'roundStart', round: state.roundIndex, modifier: state.modifier });
 }
 
 export function suddenDeathMultiplier(state: GameState): number {
@@ -255,6 +262,8 @@ function tryFire(state: GameState, i: PlayerIndex, input: PlayerInput): void {
     lifetime: bulletLifetimeFor(p.effects, state),
     radius: cfg.bullet.radius,
     bounces: p.effects.bouncer > EPS ? cfg.powerUps.bouncer.bounces : 0,
+    closestGap: Infinity,
+    nearMissed: false,
   };
   state.bullets.push(bullet);
   p.fireCooldown = fireCooldownFor(p.effects, state);
@@ -275,7 +284,8 @@ function updateBullets(state: GameState, dt: number): void {
     for (let s = 0; s < steps && alive; s++) {
       b.pos = add(b.pos, scale(b.vel, dt / steps));
       const wall = state.arena.walls.find((w) => distPointSegment(b.pos, w.a, w.b) < b.radius + wallClear);
-      if (dist(b.pos, target.pos) < hitRadius) {
+      const gap = dist(b.pos, target.pos) - hitRadius;
+      if (gap < 0) {
         if (target.effects.shield > EPS) {
           target.effects.shield = 0;
           state.events.push({ type: 'shieldBlock', player: targetIndex, pos: { ...b.pos } });
@@ -292,16 +302,32 @@ function updateBullets(state: GameState, dt: number): void {
         if (dot(b.vel, n) < 0) b.vel = sub(b.vel, scale(n, 2 * dot(b.vel, n)));
         b.pos = add(c, scale(n, b.radius + wallClear + 0.01));
         b.bounces--;
-        state.events.push({ type: 'bounce', pos: { ...b.pos } });
+        state.events.push({ type: 'bounce', owner: b.owner, pos: { ...b.pos } });
       } else if (wall) {
-        state.events.push({ type: 'wallHit', pos: { ...b.pos } });
+        state.events.push({ type: 'wallHit', owner: b.owner, pos: { ...b.pos } });
         alive = false;
+        checkNearMiss(state, b, targetIndex);
+      } else if (gap < b.closestGap) {
+        b.closestGap = gap;
+      } else {
+        // Moving away again: it has passed its target.
+        checkNearMiss(state, b, targetIndex);
       }
     }
     b.age += dt;
     if (alive && b.age < b.lifetime - EPS) survivors.push(b);
+    else if (alive) checkNearMiss(state, b, targetIndex);
   }
   state.bullets = survivors;
+}
+
+// A bullet that came within the near-miss margin of its target and didn't hit
+// counts once, when it passes them or dies.
+function checkNearMiss(state: GameState, b: Bullet, target: PlayerIndex): void {
+  if (b.nearMissed || b.closestGap >= state.cfg.nearMiss.margin) return;
+  b.nearMissed = true;
+  state.players[target].nearMisses++;
+  state.events.push({ type: 'nearMiss', player: target, pos: { ...b.pos } });
 }
 
 function checkRoundEnd(state: GameState): void {

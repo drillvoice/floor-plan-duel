@@ -3,11 +3,11 @@ import { CONFIG, KEY_BINDINGS } from './config';
 import { Keyboard, KeyboardPlayer } from './input/keyboard';
 import type { InputSource } from './input/types';
 import { lastEditedMap, listSavedMaps } from './maps/storage';
-import { THE_FLAT } from './maps/theFlat';
+import { BUILT_IN_MAPS, copyOfBuiltIn } from './maps/builtin';
 import { Sound } from './render/audio';
 import { cycleLook, loadLooks, saveLooks } from './render/looks';
 import { Music } from './render/music';
-import { Renderer } from './render/renderer';
+import { modifierReel, Renderer } from './render/renderer';
 import { Editor } from './screens/editor';
 import { HotseatLobby } from './screens/hotseat';
 import { createGame, step } from './sim/step';
@@ -76,14 +76,31 @@ function cycleSlot(i: 0 | 1): void {
   }
 }
 
+// Round modifiers on or off, from R on the title screen. On unless turned off.
+const MODIFIERS_KEY = 'fpd.modifiers';
+let modifiersOn = true;
+try {
+  modifiersOn = localStorage.getItem(MODIFIERS_KEY) !== 'off';
+} catch {
+  // Storage unavailable: keep the default.
+}
+function toggleModifiers(): void {
+  modifiersOn = !modifiersOn;
+  try {
+    localStorage.setItem(MODIFIERS_KEY, modifiersOn ? 'on' : 'off');
+  } catch {
+    // Not saved; the choice still applies this session.
+  }
+}
+
 const looks = loadLooks();
 renderer.looks = looks;
 
 let screen: Screen = { kind: 'title' };
 
-// Maps to pick from on the title screen: the built-in one, then saved ones.
+// Maps to pick from on the title screen: the built-in ones, then saved ones.
 let mapIndex = 0;
-const availableMaps = (): MapData[] => [THE_FLAT, ...listSavedMaps()];
+const availableMaps = (): MapData[] => [...BUILT_IN_MAPS, ...listSavedMaps()];
 function selectedMap(): MapData {
   const maps = availableMaps();
   return maps[mapIndex % maps.length];
@@ -132,11 +149,11 @@ interface HotseatMatch {
 function startMatch(map: MapData, from: MatchFrom = 'title', hotseat?: HotseatMatch): void {
   // The seed is picked here, outside the sim; the sim itself never reads the clock.
   const seed = (Date.now() ^ (performance.now() * 1000)) >>> 0;
-  let cfg = CONFIG;
+  let cfg = { ...CONFIG, modifiers: { ...CONFIG.modifiers, enabled: modifiersOn } };
   if (hotseat) {
     // Hotseat is always two people on the keyboard, with their own names and looks.
     inputs = [new KeyboardPlayer(keyboard, KEY_BINDINGS.p1), new KeyboardPlayer(keyboard, KEY_BINDINGS.p2)];
-    cfg = { ...CONFIG, round: { ...CONFIG.round, roundsToWin: hotseat.roundsToWin } };
+    cfg = { ...cfg, round: { ...cfg.round, roundsToWin: hotseat.roundsToWin } };
     renderer.looks = hotseat.looks;
     renderer.names = hotseat.names;
     renderer.matchOverHint = 'Enter or Esc: back to the hotseat line-up';
@@ -183,12 +200,15 @@ keyboard.onPress((code) => {
       looks[i] = cycleLook(looks[i], 1);
       saveLooks(looks);
     } else if (code === 'KeyH') openLobby();
+    else if (code === 'KeyR') toggleModifiers();
     else if (code === 'Tab') mapIndex = (mapIndex + 1) % availableMaps().length;
     else if (code === 'KeyE') {
       const map = selectedMap();
-      // A saved map opens as itself; from the built-in one, reopen the map
+      // A saved map opens as itself; from a built-in one, reopen the map
       // edited last, or start from a copy.
-      openEditor(map !== THE_FLAT ? map : (lastEditedMap() ?? { ...structuredClone(THE_FLAT), name: 'My flat' }));
+      openEditor(
+        !BUILT_IN_MAPS.includes(map) ? map : (lastEditedMap() ?? copyOfBuiltIn(map)),
+      );
     }
     return;
   }
@@ -221,7 +241,13 @@ const TICK = 1 / 60;
 const SLOWMO_DURATION = 0.6;
 const SLOWMO_SCALE = 0.2;
 let slowmo = 0;
+// Every other hit (and a shield block) freezes the action for a few frames,
+// so it lands with a thump. The screen keeps shaking through the freeze.
+const HITSTOP = 0.05;
+const BLOCKSTOP = 0.035;
+let hitstop = 0;
 let lastSecondShown = 0;
+let lastReelStep = -1;
 let accumulator = 0;
 let last = performance.now();
 
@@ -232,7 +258,7 @@ function frame(now: number): void {
 
   if (screen.kind === 'title') {
     accumulator = 0;
-    renderer.drawTitle((code) => keyboard.isHeld(code), slots, selectedMap().name, availableMaps().length);
+    renderer.drawTitle((code) => keyboard.isHeld(code), slots, selectedMap().name, availableMaps().length, modifiersOn);
   } else if (screen.kind === 'editor') {
     accumulator = 0;
     editor.draw();
@@ -242,7 +268,9 @@ function frame(now: number): void {
   } else {
     const match = screen;
     music.setPaused(match.paused);
-    if (!match.paused) {
+    if (!match.paused && hitstop > 0) {
+      hitstop = Math.max(0, hitstop - elapsed);
+    } else if (!match.paused) {
       accumulator += slowmo > 0 ? elapsed * SLOWMO_SCALE : elapsed;
       slowmo = Math.max(0, slowmo - elapsed);
       while (accumulator >= TICK) {
@@ -252,10 +280,23 @@ function frame(now: number): void {
         renderer.handleEvents(s.events, s);
         sound.handleEvents(s.events, s);
         if (s.events.some((e) => e.type === 'hit' && e.hits >= s.cfg.round.hitsToLose)) slowmo = SLOWMO_DURATION;
+        else if (s.events.some((e) => e.type === 'hit')) hitstop = HITSTOP;
+        else if (s.events.some((e) => e.type === 'shieldBlock')) hitstop = BLOCKSTOP;
+        if (hitstop > 0) {
+          accumulator = 0;
+          break;
+        }
       }
       renderer.update(slowmo > 0 ? elapsed * 0.35 : elapsed);
       // Tick through the last ten seconds of a round.
       const s = match.state;
+      // Click as the modifier reel spins, and ding when it lands.
+      const reel = s.phase === 'countdown' && s.modifier ? modifierReel(s.phaseTime) : null;
+      if (reel && reel.step !== lastReelStep) {
+        if (reel.landed) sound.reelLand();
+        else sound.reelTick();
+      }
+      lastReelStep = reel ? reel.step : -1;
       const secondsLeft = Math.ceil(s.cfg.round.timeLimit - s.roundTime);
       if (s.phase === 'playing' && secondsLeft !== lastSecondShown && secondsLeft > 0 && secondsLeft <= 10) sound.tick(secondsLeft);
       lastSecondShown = secondsLeft;

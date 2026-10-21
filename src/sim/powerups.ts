@@ -133,5 +133,6 @@ export function applyPowerUp(state: GameState, player: PlayerIndex, kind: PowerU
     return;
   }
   const target = ON_OPPONENT.has(kind) ? state.players[player === 0 ? 1 : 0] : me;
-  target.effects[kind] = (pc[kind] as { duration: number }).duration;
+  // Never cuts short an effect that lasts longer (e.g. one a round modifier gave).
+  target.effects[kind] = Math.max(target.effects[kind], (pc[kind] as { duration: number }).duration);
 }

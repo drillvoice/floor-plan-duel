@@ -5,7 +5,7 @@
 import { CONFIG } from '../config';
 import { isTextField } from '../input/keyboard';
 import { deleteMap, listSavedMaps, newMapId, saveMap, type SavedMap } from '../maps/storage';
-import { THE_FLAT } from '../maps/theFlat';
+import { BUILT_IN_MAPS, copyOfBuiltIn } from '../maps/builtin';
 import { autoSpawns, parseMapJson, validateMap } from '../maps/validate';
 import { COLORS } from '../render/renderer';
 import type { MapData } from '../sim/types';
@@ -213,7 +213,7 @@ export class Editor {
   private refreshLoadList(): void {
     this.loadSelect.replaceChildren(
       el('option', { textContent: 'Load…', value: '' }),
-      el('option', { textContent: THE_FLAT.name, value: '__builtin' }),
+      ...BUILT_IN_MAPS.map((m, i) => el('option', { textContent: `${m.name} (built-in)`, value: `__builtin${i}` })),
       ...listSavedMaps().map((m) => el('option', { textContent: m.name, value: m.id })),
     );
   }
@@ -223,7 +223,8 @@ export class Editor {
     this.loadSelect.value = '';
     this.loadSelect.blur();
     if (!v) return;
-    const map = v === '__builtin' ? { ...structuredClone(THE_FLAT), name: 'My flat' } : listSavedMaps().find((m) => m.id === v);
+    const builtIn = v.startsWith('__builtin') ? BUILT_IN_MAPS[Number(v.slice('__builtin'.length))] : undefined;
+    const map = builtIn ? copyOfBuiltIn(builtIn) : listSavedMaps().find((m) => m.id === v);
     if (map) this.switchTo(map, `Loaded “${map.name}”.`);
   }
 

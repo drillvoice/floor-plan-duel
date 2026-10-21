@@ -43,7 +43,7 @@ describe('bot', () => {
     placePlayer(s, 0, { x: 4, y: 2 });
     placePlayer(s, 1, { x: 4, y: 7 });
     // A bullet already in flight, coming straight down at the bot.
-    s.bullets.push({ id: 77, owner: 0, pos: { x: 4, y: 5 }, vel: { x: 0, y: 8 }, age: 0.1, lifetime: 1, radius: 0.15, bounces: 0 });
+    s.bullets.push({ id: 77, owner: 0, pos: { x: 4, y: 5 }, vel: { x: 0, y: 8 }, age: 0.1, lifetime: 1, radius: 0.15, bounces: 0, closestGap: Infinity, nearMissed: false });
     return new BotPlayer('hard', 3).sample(s, 1);
   }
 

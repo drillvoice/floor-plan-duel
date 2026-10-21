@@ -3,11 +3,12 @@
 import { KEY_BINDINGS, type PlayerKeys } from '../config';
 import { fireCooldownFor, hitRadiusFor, maxDodgeCharges, ON_OPPONENT, STACKING } from '../sim/powerups';
 import { dodgeDirection, suddenDeathMultiplier } from '../sim/step';
-import { POWER_UP_KINDS } from '../config';
+import { MODIFIER_IDS, POWER_UP_KINDS } from '../config';
+import { MODIFIERS } from '../sim/modifiers';
 import { POWER_UP_CATEGORY, type GameEvent, type GameState, type PlayerIndex, type PowerUp, type PowerUpKind } from '../sim/types';
 import { CATEGORY_COLORS, drawPowerUpGlyph, powerUpColor } from './icons';
 import { drawLook } from './looks';
-import { add, scale, type Vec2 } from '../sim/vec';
+import { add, closestPointOnSegment, distPointSegment, scale, type Vec2 } from '../sim/vec';
 
 export const COLORS = {
   background: '#16181f',
@@ -57,6 +58,9 @@ interface Callout {
 }
 
 const CALLOUT_LIFE = 1.4;
+const NEAR_MISS_GLOW = 0.3;
+const NEAR_MISS_COLOR = '#ffe066';
+const NEAR_MISS_TEXT = ['Close!', 'Whew!', 'Too close!', 'Not today!', 'Missed me!'];
 
 // What a pickup says over the player who took it, and over the opponent for curses.
 const PICKUP_TEXT: Record<PowerUpKind, { self: string; victim?: string }> = {
@@ -93,6 +97,43 @@ const HUD_NAMES: Record<PowerUpKind, string> = {
   bigTarget: 'Big target',
 };
 
+// The round-modifier reel spins through names, slowing down, and lands on
+// the round's modifier. These are the times (s into the countdown) at which
+// it moves on to the next name; the last one is where it lands.
+const REEL_STEPS: number[] = (() => {
+  const times: number[] = [];
+  let t = 0;
+  for (let gap = 0.05; t < 1.3; gap *= 1.17) times.push((t += gap));
+  return times;
+})();
+
+// Where the reel is `t` seconds into the countdown: how many names it has
+// moved through, and whether it has landed.
+export function modifierReel(t: number): { step: number; landed: boolean } {
+  let step = 0;
+  while (step < REEL_STEPS.length && t >= REEL_STEPS[step]) step++;
+  return { step, landed: step === REEL_STEPS.length };
+}
+
+const MODIFIER_COLOR = '#ffd23f';
+
+// Lights Out maps: how far each light reaches (units) and how bright it is.
+const DARKNESS = 'rgba(4,5,9,0.95)';
+const PLAYER_LIGHT = 3.2;
+const FLASH_LIGHT = 4;
+const FLASH_LIFE = 0.15;
+
+// Paint marks where bullets hit walls, in the shooter's colour. They build up
+// over a match (the oldest go once there are too many) and are drawn only on
+// the walls themselves.
+interface Splat {
+  pos: Vec2; // on the wall's centre line
+  color: string;
+  dots: { dx: number; dy: number; r: number }[]; // units, relative to pos
+  alpha: number;
+}
+const MAX_SPLATS = 800;
+
 interface Trail {
   from: Vec2;
   to: Vec2;
@@ -108,10 +149,18 @@ export class Renderer {
   private origin = { x: 0, y: 0 };
   private sideW = SIDE_MIN;
   private hitFlash = [0, 0];
+  private nearMissGlow = [0, 0];
   private trails: Trail[] = [];
   private pendingDash: { player: PlayerIndex; from: Vec2 }[] = [];
   private particles: Particle[] = [];
   private rings: Ring[] = [];
+  private flashes: { pos: Vec2; age: number }[] = []; // muzzle flashes and impacts, for Lights Out
+  private darkLayer: HTMLCanvasElement | null = null;
+  private splats: Splat[] = [];
+  private splatsFor: GameState | null = null; // the match the splats belong to
+  // Walls with their splats, redrawn only when a splat lands or the layout changes.
+  private wallLayer: HTMLCanvasElement | null = null;
+  private wallLayerKey = '';
   private callouts: Callout[] = [];
   private shake = 0;
   private screenFlash = 0;
@@ -151,16 +200,31 @@ export class Renderer {
           this.burst(e.pos, COLORS.players[e.player], final ? 28 : 14, final ? 7 : 5);
           break;
         }
+        case 'nearMiss': {
+          // Several in quick succession for one player only say it once.
+          if (!this.callouts.some((c) => c.player === e.player && c.color === NEAR_MISS_COLOR && c.age < 0.5)) {
+            this.callout(e.player, NEAR_MISS_TEXT[Math.floor(Math.random() * NEAR_MISS_TEXT.length)], NEAR_MISS_COLOR);
+          }
+          this.nearMissGlow[e.player] = NEAR_MISS_GLOW;
+          this.rings.push({ pos: { ...state.players[e.player].pos }, age: 0, color: NEAR_MISS_COLOR });
+          break;
+        }
         case 'shieldBlock':
           this.callout(e.player, 'Blocked!', CATEGORY_COLORS.buff);
           this.shake = Math.max(this.shake, 0.3);
           this.burst(e.pos, CATEGORY_COLORS.buff, 12, 4);
           break;
+        case 'fire':
+          this.flashes.push({ pos: e.pos, age: 0 });
+          break;
         case 'wallHit':
           this.burst(e.pos, COLORS.wall, 4, 2);
+          this.flashes.push({ pos: e.pos, age: FLASH_LIFE / 2 });
+          this.splat(state, e.pos, COLORS.players[e.owner], 1);
           break;
         case 'bounce':
           this.burst(e.pos, CATEGORY_COLORS.buff, 6, 3);
+          this.splat(state, e.pos, COLORS.players[e.owner], 0.6);
           break;
         case 'dodge':
           this.pendingDash.push({ player: e.player, from: e.from });
@@ -182,6 +246,7 @@ export class Renderer {
           this.suddenDeathBanner = 2;
           break;
         case 'roundStart':
+          this.flashes = [];
           this.callouts = [];
           this.trails = [];
           this.particles = [];
@@ -199,6 +264,7 @@ export class Renderer {
   // Advance purely visual effects by real elapsed time.
   update(dt: number): void {
     this.hitFlash = this.hitFlash.map((t) => Math.max(0, t - dt));
+    this.nearMissGlow = this.nearMissGlow.map((t) => Math.max(0, t - dt));
     for (const t of this.trails) t.age += dt;
     this.trails = this.trails.filter((t) => t.age < 0.35);
     for (const p of this.particles) {
@@ -207,6 +273,8 @@ export class Renderer {
       p.vel = scale(p.vel, Math.pow(0.02, dt));
     }
     this.particles = this.particles.filter((p) => p.age < p.life);
+    for (const f of this.flashes) f.age += dt;
+    this.flashes = this.flashes.filter((f) => f.age < FLASH_LIFE);
     for (const r of this.rings) r.age += dt;
     this.rings = this.rings.filter((r) => r.age < 0.4);
     for (const c of this.callouts) c.age += dt;
@@ -214,6 +282,28 @@ export class Renderer {
     this.shake = Math.max(0, this.shake - dt * 2.5);
     this.screenFlash = Math.max(0, this.screenFlash - dt);
     this.suddenDeathBanner = Math.max(0, this.suddenDeathBanner - dt);
+  }
+
+  // A paint mark on the wall nearest `pos`: a blob plus a couple of drips
+  // spread along the wall. `size` scales it (bounces leave a lighter mark).
+  private splat(state: GameState, pos: Vec2, color: string, size: number): void {
+    if (this.splatsFor !== state) {
+      this.splats = [];
+      this.splatsFor = state;
+    }
+    let wall = state.arena.walls[0];
+    for (const w of state.arena.walls) if (distPointSegment(pos, w.a, w.b) < distPointSegment(pos, wall.a, wall.b)) wall = w;
+    const at = closestPointOnSegment(pos, wall.a, wall.b);
+    const len = Math.hypot(wall.b.x - wall.a.x, wall.b.y - wall.a.y) || 1;
+    const along = { x: (wall.b.x - wall.a.x) / len, y: (wall.b.y - wall.a.y) / len };
+    const dots = [{ dx: 0, dy: 0, r: (0.22 + Math.random() * 0.1) * size }];
+    for (let n = 0; n < 3; n++) {
+      const d = (Math.random() * 2 - 1) * 0.55 * size;
+      dots.push({ dx: along.x * d, dy: along.y * d, r: (0.06 + Math.random() * 0.08) * size });
+    }
+    this.splats.push({ pos: at, color, dots, alpha: 0.55 + 0.25 * size * Math.random() });
+    if (this.splats.length > MAX_SPLATS) this.splats.shift();
+    this.wallLayerKey = '';
   }
 
   // Visual-only randomness is fine here: the renderer never touches game state.
@@ -263,6 +353,7 @@ export class Renderer {
     for (const pu of state.powerUps) this.drawPowerUp(state, pu);
     for (const b of state.bullets) this.drawBullet(state, b.owner, b.pos, b.radius, b.age, b.lifetime, b.bounces > 0);
     for (const i of [0, 1] as const) this.drawPlayer(state, i);
+    if (state.arena.dark) this.drawDarkness(state);
     this.drawEffects();
     this.drawCallouts(state);
     ctx.restore();
@@ -306,8 +397,28 @@ export class Renderer {
     }
     ctx.stroke();
 
+    if (this.splatsFor !== state) {
+      this.splats = [];
+      this.splatsFor = state;
+      this.wallLayerKey = '';
+    }
+    ctx.drawImage(this.wallsWithSplats(state), 0, 0, this.width, this.height);
+  }
+
+  // The walls, with splats painted only where they overlap a wall, on a
+  // cached layer the size of the canvas.
+  private wallsWithSplats(state: GameState): HTMLCanvasElement {
+    const layer = (this.wallLayer ??= document.createElement('canvas'));
+    const key = `${this.canvas.width}x${this.canvas.height}:${this.origin.x},${this.origin.y},${this.scale}`;
+    if (key === this.wallLayerKey) return layer;
+    this.wallLayerKey = key;
+    layer.width = this.canvas.width;
+    layer.height = this.canvas.height;
+    const ctx = layer.getContext('2d')!;
+    const dpr = this.canvas.width / this.width;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.strokeStyle = COLORS.wall;
-    ctx.lineWidth = state.cfg.map.wallThickness * s;
+    ctx.lineWidth = state.cfg.map.wallThickness * this.scale;
     ctx.lineCap = 'round';
     ctx.beginPath();
     for (const w of state.arena.walls) {
@@ -317,6 +428,58 @@ export class Renderer {
       ctx.lineTo(b.x, b.y);
     }
     ctx.stroke();
+    // Paint only lands on wall that's already there.
+    ctx.globalCompositeOperation = 'source-atop';
+    for (const sp of this.splats) {
+      ctx.fillStyle = hexAlpha(sp.color, sp.alpha);
+      ctx.beginPath();
+      for (const d of sp.dots) {
+        const c = this.toScreen({ x: sp.pos.x + d.dx, y: sp.pos.y + d.dy });
+        ctx.moveTo(c.x + d.r * this.scale, c.y);
+        ctx.arc(c.x, c.y, d.r * this.scale, 0, Math.PI * 2);
+      }
+      ctx.fill();
+    }
+    return layer;
+  }
+
+  // Lights Out: cover the arena in darkness, with soft holes where there's
+  // light: around each player, on bullets and power-ups, and briefly at
+  // muzzle flashes and impacts. Drawn on a layer of its own so the holes
+  // don't cut into the arena underneath.
+  private drawDarkness(state: GameState): void {
+    const main = this.ctx;
+    const layer = (this.darkLayer ??= document.createElement('canvas'));
+    if (layer.width !== this.canvas.width || layer.height !== this.canvas.height) {
+      layer.width = this.canvas.width;
+      layer.height = this.canvas.height;
+    }
+    const ctx = layer.getContext('2d')!;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, layer.width, layer.height);
+    ctx.setTransform(main.getTransform()); // includes screen shake
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = DARKNESS;
+    ctx.fillRect(this.origin.x, this.origin.y, state.arena.width * this.scale, state.arena.height * this.scale);
+    ctx.globalCompositeOperation = 'destination-out';
+    const light = (pos: Vec2, reach: number, strength: number) => {
+      const c = this.toScreen(pos);
+      const r = reach * this.scale;
+      const grad = ctx.createRadialGradient(c.x, c.y, 0, c.x, c.y, r);
+      grad.addColorStop(0, `rgba(0,0,0,${strength})`);
+      grad.addColorStop(0.5, `rgba(0,0,0,${strength * 0.75})`);
+      grad.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(c.x - r, c.y - r, r * 2, r * 2);
+    };
+    for (const p of state.players) light(p.pos, PLAYER_LIGHT, 1);
+    for (const b of state.bullets) light(b.pos, 1.1, 0.9);
+    for (const pu of state.powerUps) light(pu.pos, pu.telegraph > 0 ? 1.4 : 1.2, 0.8);
+    for (const f of this.flashes) light(f.pos, FLASH_LIGHT * (1 - f.age / FLASH_LIFE), 0.9);
+    main.save();
+    main.setTransform(1, 0, 0, 1, 0, 0);
+    main.drawImage(layer, 0, 0);
+    main.restore();
   }
 
   private callout(player: PlayerIndex, text: string, color: string): void {
@@ -501,6 +664,16 @@ export class Renderer {
     ctx.arc(nub.x, nub.y, r * 0.22, 0, Math.PI * 2);
     ctx.fill();
 
+    if (this.nearMissGlow[i] > 0) {
+      // A bright rim that flares out and fades after a near miss.
+      const t = 1 - this.nearMissGlow[i] / NEAR_MISS_GLOW;
+      ctx.strokeStyle = hexAlpha(NEAR_MISS_COLOR, 1 - t);
+      ctx.lineWidth = 4 * (1 - t) + 1;
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, r + 3 + t * 10, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
     if (this.hitFlash[i] > 0) {
       ctx.fillStyle = `rgba(255,255,255,${this.hitFlash[i] / 0.18})`;
       ctx.beginPath();
@@ -601,7 +774,13 @@ export class Renderer {
     ctx.fillText(label, this.width / 2, 24);
     ctx.font = '500 13px system-ui, sans-serif';
     ctx.fillStyle = COLORS.muted;
-    ctx.fillText(`Round ${state.roundIndex + 1}`, this.width / 2, 50);
+    if (state.modifier && state.phase !== 'countdown') {
+      ctx.fillStyle = MODIFIER_COLOR;
+      ctx.font = '700 13px system-ui, sans-serif';
+      ctx.fillText(`Round ${state.roundIndex + 1} · ${MODIFIERS[state.modifier].name}`, this.width / 2, 50);
+    } else {
+      ctx.fillText(`Round ${state.roundIndex + 1}`, this.width / 2, 50);
+    }
   }
 
   // One player's status in the column beside the arena, sized to read at a
@@ -706,7 +885,7 @@ export class Renderer {
       ctx.textAlign = left ? 'left' : 'right';
       ctx.fillStyle = COLORS.text;
       ctx.font = `800 ${20 * u}px system-ui, sans-serif`;
-      ctx.fillText(STACKING.has(kind) ? `×${amount}` : `${Math.ceil(amount)}s`, textX, iy - 7 * u);
+      ctx.fillText(STACKING.has(kind) ? `×${amount}` : Number.isFinite(amount) ? `${Math.ceil(amount)}s` : '∞', textX, iy - 7 * u);
       ctx.fillStyle = COLORS.muted;
       ctx.font = `500 ${12 * u}px system-ui, sans-serif`;
       ctx.fillText(HUD_NAMES[kind], textX, iy + 11 * u);
@@ -724,6 +903,9 @@ export class Renderer {
     if (paused) {
       title = 'Paused';
       sub = 'Esc to resume · Q to quit to title';
+    } else if (state.phase === 'countdown' && state.modifier) {
+      this.drawModifierReel(state);
+      return;
     } else if (state.phase === 'countdown') {
       title = `Round ${state.roundIndex + 1}`;
       sub = 'Get ready';
@@ -748,6 +930,70 @@ export class Renderer {
     ctx.fillStyle = COLORS.text;
     ctx.font = '500 18px system-ui, sans-serif';
     ctx.fillText(sub, this.width / 2, this.height / 2 + 32);
+    if (state.phase === 'matchOver' && !paused) {
+      const [a, b] = state.players.map((p) => p.nearMisses);
+      ctx.fillStyle = NEAR_MISS_COLOR;
+      ctx.font = '600 16px system-ui, sans-serif';
+      ctx.fillText(`Clutch dodges: ${this.names[0]} ${a} · ${this.names[1]} ${b}`, this.width / 2, this.height / 2 + 68);
+    }
+  }
+
+  // Countdown with a modifier: a slot-machine reel of modifier names that
+  // slows down and lands on this round's, then says what it does.
+  private drawModifierReel(state: GameState): void {
+    const ctx = this.ctx;
+    const id = state.modifier!;
+    const { step, landed } = modifierReel(state.phaseTime);
+    // Count back from the landing so the last name shown is the real one.
+    const order = MODIFIER_IDS;
+    const at = order.indexOf(id) - (REEL_STEPS.length - step);
+    const shown = order[((at % order.length) + order.length) % order.length];
+    const cx = this.width / 2;
+    const cy = this.height / 2;
+    ctx.fillStyle = 'rgba(10,11,15,0.6)';
+    ctx.fillRect(0, 0, this.width, this.height);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = COLORS.text;
+    ctx.font = '800 28px system-ui, sans-serif';
+    ctx.fillText(`Round ${state.roundIndex + 1}`, cx, cy - 110);
+
+    // The reel window.
+    const w = Math.min(560, this.width - 40);
+    const h = 96;
+    ctx.save();
+    ctx.fillStyle = 'rgba(255,255,255,0.06)';
+    ctx.strokeStyle = landed ? MODIFIER_COLOR : 'rgba(255,255,255,0.3)';
+    ctx.lineWidth = landed ? 4 : 2;
+    ctx.beginPath();
+    ctx.roundRect(cx - w / 2, cy - h / 2 - 10, w, h, 14);
+    ctx.fill();
+    ctx.stroke();
+    ctx.clip();
+    // Between steps each name drifts up through the window and fades; once
+    // landed it pops.
+    const prev = step === 0 ? 0 : REEL_STEPS[step - 1];
+    const next = REEL_STEPS[step] ?? prev;
+    const slide = landed ? 0.5 : (state.phaseTime - prev) / Math.max(0.001, next - prev);
+    const sinceLand = state.phaseTime - REEL_STEPS[REEL_STEPS.length - 1];
+    const pop = landed ? 1 + 0.25 * Math.max(0, 1 - sinceLand / 0.2) : 1;
+    ctx.translate(cx, cy - 10 + (0.5 - slide) * h * 0.4);
+    ctx.scale(pop, pop);
+    ctx.globalAlpha = landed ? 1 : 1 - Math.abs(slide - 0.5);
+    ctx.fillStyle = landed ? MODIFIER_COLOR : COLORS.text;
+    ctx.font = '900 48px system-ui, sans-serif';
+    ctx.fillText(MODIFIERS[shown].name, 0, 0);
+    ctx.restore();
+
+    if (landed) {
+      const a = Math.min(1, sinceLand / 0.25);
+      ctx.fillStyle = hexAlpha(COLORS.text, a);
+      ctx.font = '600 22px system-ui, sans-serif';
+      ctx.fillText(MODIFIERS[id].blurb, cx, cy + 70);
+      ctx.fillStyle = hexAlpha(COLORS.muted, a);
+      ctx.font = '500 16px system-ui, sans-serif';
+      ctx.fillText('Get ready', cx, cy + 104);
+    }
   }
 
   // Plain background behind HTML screens such as the hotseat lobby.
@@ -757,7 +1003,13 @@ export class Renderer {
   }
 
   // Title screen with a live key test, so ghosting shows up before a match.
-  drawTitle(isHeld: (code: string) => boolean, slots: readonly string[], mapName: string, mapCount: number): void {
+  drawTitle(
+    isHeld: (code: string) => boolean,
+    slots: readonly string[],
+    mapName: string,
+    mapCount: number,
+    modifiers: boolean,
+  ): void {
     const ctx = this.ctx;
     ctx.fillStyle = COLORS.background;
     ctx.fillRect(0, 0, this.width, this.height);
@@ -790,6 +1042,9 @@ export class Renderer {
       cx,
       head + 114,
     );
+    ctx.fillStyle = modifiers ? MODIFIER_COLOR : COLORS.muted;
+    ctx.font = '600 13px system-ui, sans-serif';
+    ctx.fillText(`Round modifiers: ${modifiers ? 'ON' : 'OFF'}  (R to change)`, cx, head + 138);
 
     const colW = Math.min(360, w / 2 - 20);
     this.drawKeyPanel(KEY_BINDINGS.p1, 0, cx - colW / 2 - 10, top, isHeld, slots[0]);

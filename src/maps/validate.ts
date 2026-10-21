@@ -80,5 +80,6 @@ export function parseMapJson(text: string): MapData {
       { x: data.spawns[0].x, y: data.spawns[0].y },
       { x: data.spawns[1].x, y: data.spawns[1].y },
     ],
+    ...(data.dark === true ? { dark: true } : {}),
   };
 }

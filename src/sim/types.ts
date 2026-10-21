@@ -1,4 +1,4 @@
-import type { Config, PowerUpKind } from '../config';
+import type { Config, ModifierId, PowerUpKind } from '../config';
 import type { Grid } from './grid';
 import type { Vec2 } from './vec';
 
@@ -30,6 +30,7 @@ export interface MapData {
   height: number;
   walls: Wall[];
   spawns: [Vec2, Vec2];
+  dark?: boolean; // lights out: only what's near a player or glowing is visible
 }
 
 // A map prepared for play: includes the outer boundary walls.
@@ -39,6 +40,7 @@ export interface Arena {
   height: number;
   walls: Wall[];
   spawns: [Vec2, Vec2];
+  dark: boolean;
   grid: Grid;
 }
 
@@ -88,6 +90,7 @@ export interface PlayerState {
   lastMove: Vec2; // unit vector of the last movement input; where a dodge goes when standing still
   hits: number; // hits taken this round
   roundWins: number;
+  nearMisses: number; // bullets that just missed this player, over the whole match
   fireCooldown: number;
   dodgeCharges: number;
   dodgeCooldown: number; // time until the next charge comes back
@@ -105,6 +108,8 @@ export interface Bullet {
   lifetime: number;
   radius: number;
   bounces: number; // wall bounces left (Bouncer)
+  closestGap: number; // nearest it has come to its target's edge so far
+  nearMissed: boolean; // already counted as a near miss
 }
 
 export type Phase = 'countdown' | 'playing' | 'roundOver' | 'matchOver';
@@ -112,10 +117,11 @@ export type Phase = 'countdown' | 'playing' | 'roundOver' | 'matchOver';
 export type GameEvent =
   | { type: 'fire'; player: PlayerIndex; pos: Vec2 }
   | { type: 'hit'; player: PlayerIndex; pos: Vec2; hits: number }
-  | { type: 'wallHit'; pos: Vec2 }
-  | { type: 'bounce'; pos: Vec2 }
+  | { type: 'nearMiss'; player: PlayerIndex; pos: Vec2 }
+  | { type: 'wallHit'; owner: PlayerIndex; pos: Vec2 }
+  | { type: 'bounce'; owner: PlayerIndex; pos: Vec2 }
   | { type: 'dodge'; player: PlayerIndex; from: Vec2; dir: Vec2 }
-  | { type: 'roundStart'; round: number }
+  | { type: 'roundStart'; round: number; modifier: ModifierId | null }
   | { type: 'roundEnd'; winner: PlayerIndex | null }
   | { type: 'matchEnd'; winner: PlayerIndex }
   | { type: 'suddenDeath' }
@@ -125,7 +131,9 @@ export type GameEvent =
   | { type: 'shieldBlock'; player: PlayerIndex; pos: Vec2 };
 
 export interface GameState {
-  cfg: Config;
+  cfg: Config; // rules for the current round: baseCfg plus its modifier
+  baseCfg: Config; // rules for the match
+  modifier: ModifierId | null; // this round's modifier
   arena: Arena;
   tick: number;
   phase: Phase;

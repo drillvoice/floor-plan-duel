@@ -22,6 +22,7 @@ On the title screen:
 
 - **Enter** starts a match, best of 5 rounds, 3 hits to lose a round.
 - **1 / 2** switch each player between Human and Bot (Easy, Normal, Hard). Two bots will play each other.
+- Each player's **dodge keys** cycle their look: a plain circle or a cute icon inside it.
 - **Tab** changes the map; **E** opens the map editor (on a saved map, or the one you edited last).
 - **M** mutes sound.
 - The key caps light up while held: use this to check your keyboard can register everyone's keys at once.

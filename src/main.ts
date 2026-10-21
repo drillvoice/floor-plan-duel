@@ -5,6 +5,7 @@ import type { InputSource } from './input/types';
 import { lastEditedMap, listSavedMaps } from './maps/storage';
 import { THE_FLAT } from './maps/theFlat';
 import { Sound } from './render/audio';
+import { cycleLook, loadLooks, saveLooks } from './render/looks';
 import { Renderer } from './render/renderer';
 import { Editor } from './screens/editor';
 import { createGame, step } from './sim/step';
@@ -54,6 +55,9 @@ function cycleSlot(i: 0 | 1): void {
     // Not saved; the choice still applies this session.
   }
 }
+
+const looks = loadLooks();
+renderer.looks = looks;
 
 let screen: Screen = { kind: 'title' };
 
@@ -106,7 +110,13 @@ keyboard.onPress((code) => {
     if (code === 'Enter' || code === 'Space') startMatch(selectedMap());
     else if (code === 'Digit1') cycleSlot(0);
     else if (code === 'Digit2') cycleSlot(1);
-    else if (code === 'Tab') mapIndex = (mapIndex + 1) % availableMaps().length;
+    else if (code === KEY_BINDINGS.p1.dodgeLeft || code === KEY_BINDINGS.p1.dodgeRight) {
+      looks[0] = cycleLook(looks[0], code === KEY_BINDINGS.p1.dodgeLeft ? -1 : 1);
+      saveLooks(looks);
+    } else if (code === KEY_BINDINGS.p2.dodgeLeft || code === KEY_BINDINGS.p2.dodgeRight) {
+      looks[1] = cycleLook(looks[1], code === KEY_BINDINGS.p2.dodgeLeft ? -1 : 1);
+      saveLooks(looks);
+    } else if (code === 'Tab') mapIndex = (mapIndex + 1) % availableMaps().length;
     else if (code === 'KeyE') {
       const map = selectedMap();
       // A saved map opens as itself; from the built-in one, reopen the map

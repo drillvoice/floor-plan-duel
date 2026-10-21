@@ -5,6 +5,7 @@ import { fireCooldownFor } from '../sim/powerups';
 import { dodgeDirection, suddenDeathMultiplier } from '../sim/step';
 import { POWER_UP_CATEGORY, type GameEvent, type GameState, type PlayerIndex, type PowerUp, type PowerUpKind } from '../sim/types';
 import { CATEGORY_COLORS, drawPowerUpGlyph, powerUpColor } from './icons';
+import { drawLook } from './looks';
 import { add, scale, type Vec2 } from '../sim/vec';
 
 export const COLORS = {
@@ -59,6 +60,8 @@ export class Renderer {
   private shake = 0;
   private screenFlash = 0;
   private suddenDeathBanner = 0;
+  // Each player's chosen look (see looks.ts); set by the app.
+  looks: [string, string] = ['', ''];
 
   constructor(private canvas: HTMLCanvasElement) {
     this.ctx = canvas.getContext('2d')!;
@@ -342,6 +345,8 @@ export class Renderer {
       }
     }
 
+    drawLook(ctx, this.looks[i], c.x, c.y, r);
+
     // Facing nub.
     const nub = this.toScreen(add(p.pos, scale(p.facing, cfg.player.radius * 0.95)));
     ctx.fillStyle = '#ffffff';
@@ -498,6 +503,10 @@ export class Renderer {
     ctx.fillText(`Round ${state.roundIndex + 1}`, this.width / 2, 50);
   }
 
+  private label(i: PlayerIndex): string {
+    return `${this.looks[i]} ${PLAYER_NAMES[i]}`.trim();
+  }
+
   private drawOverlay(state: GameState, paused: boolean): void {
     let title = '';
     let sub = '';
@@ -509,10 +518,10 @@ export class Renderer {
       sub = 'Get ready';
     } else if (state.phase === 'roundOver') {
       const w = state.lastRoundWinner;
-      title = w === null ? 'Draw' : `${PLAYER_NAMES[w]} takes the round`;
+      title = w === null ? 'Draw' : `${this.label(w)} takes the round`;
       sub = w === null ? 'Replaying the round' : '';
     } else if (state.phase === 'matchOver' && state.matchWinner !== null) {
-      title = `${PLAYER_NAMES[state.matchWinner]} wins!`;
+      title = `${this.label(state.matchWinner)} wins!`;
       sub = 'Enter for a rematch · Esc for title';
     } else return;
 
@@ -578,7 +587,12 @@ export class Renderer {
     ctx.fillStyle = COLORS.players[i];
     ctx.font = '700 22px system-ui, sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText(PLAYER_NAMES[i], cx, top);
+    ctx.fillText(PLAYER_NAMES[i], cx + 16, top);
+    // Look preview, cycled with this player's dodge keys.
+    ctx.beginPath();
+    ctx.arc(cx - 24, top, 20, 0, Math.PI * 2);
+    ctx.fill();
+    drawLook(ctx, this.looks[i], cx - 24, top, 20);
     const who = slot === 'human' ? 'Human' : `Bot · ${slot[0].toUpperCase()}${slot.slice(1)}`;
     ctx.fillStyle = COLORS.text;
     ctx.font = '600 16px system-ui, sans-serif';
@@ -586,6 +600,7 @@ export class Renderer {
     ctx.fillStyle = COLORS.muted;
     ctx.font = '400 13px system-ui, sans-serif';
     ctx.fillText(`press ${i + 1} to change`, cx, top + 212);
+    ctx.fillText('dodge keys change your look', cx, top + 232);
     if (slot !== 'human') ctx.globalAlpha = 0.3;
     const k = 42;
     const gap = 6;

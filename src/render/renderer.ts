@@ -29,6 +29,9 @@ const MARGIN = 24;
 const SIDE_MIN = 150;
 const SIDE_MAX = 260;
 const SIDE_GAP = 16;
+// Smallest window the title screen fits at full size.
+const TITLE_MIN_H = 520;
+const TITLE_MIN_W = 820;
 
 interface Particle {
   pos: Vec2;
@@ -756,30 +759,39 @@ export class Renderer {
   // Title screen with a live key test, so ghosting shows up before a match.
   drawTitle(isHeld: (code: string) => boolean, slots: readonly string[], mapName: string, mapCount: number): void {
     const ctx = this.ctx;
-    const cx = this.width / 2;
     ctx.fillStyle = COLORS.background;
     ctx.fillRect(0, 0, this.width, this.height);
+    // Sections flow down the page so they never overlap, spreading out on
+    // tall windows. A window too small for them shrinks the whole screen.
+    const s = Math.min(1, this.height / TITLE_MIN_H, this.width / TITLE_MIN_W);
+    const w = this.width / s;
+    const h = this.height / s;
+    ctx.save();
+    ctx.scale(s, s);
+    const cx = w / 2;
+    const footer = h - 30;
+    const head = Math.max(50, Math.min(h * 0.2, footer - 440));
+    const top = Math.max(head + 170, Math.min(h * 0.42, footer - 270));
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = COLORS.text;
     ctx.font = '800 56px system-ui, sans-serif';
-    ctx.fillText('Floor Plan Duel', cx, this.height * 0.2);
+    ctx.fillText('Floor Plan Duel', cx, head);
     ctx.font = '500 20px system-ui, sans-serif';
     ctx.fillStyle = COLORS.muted;
-    ctx.fillText('Press Enter to start  ·  M to mute  ·  N for music on/off', cx, this.height * 0.2 + 52);
+    ctx.fillText('Press Enter to start  ·  M to mute  ·  N for music on/off', cx, head + 52);
     ctx.fillStyle = COLORS.text;
     ctx.font = '600 17px system-ui, sans-serif';
-    ctx.fillText(`Map: ${mapName}`, cx, this.height * 0.2 + 92);
+    ctx.fillText(`Map: ${mapName}`, cx, head + 92);
     ctx.fillStyle = COLORS.muted;
     ctx.font = '400 13px system-ui, sans-serif';
     ctx.fillText(
       `${mapCount > 1 ? 'Tab to change map  ·  ' : ''}E to open the map editor  ·  H for hotseat (take turns, winner stays on)`,
       cx,
-      this.height * 0.2 + 114,
+      head + 114,
     );
 
-    const top = this.height * 0.42;
-    const colW = Math.min(360, this.width / 2 - 20);
+    const colW = Math.min(360, w / 2 - 20);
     this.drawKeyPanel(KEY_BINDINGS.p1, 0, cx - colW / 2 - 10, top, isHeld, slots[0]);
     this.drawKeyPanel(KEY_BINDINGS.p2, 1, cx + colW / 2 + 10, top, isHeld, slots[1]);
 
@@ -789,8 +801,9 @@ export class Renderer {
     ctx.fillText(
       'Key test: hold every key you would use together. If a key fails to light up, your keyboard is ghosting.',
       cx,
-      this.height - 40,
+      footer,
     );
+    ctx.restore();
   }
 
   private drawKeyPanel(

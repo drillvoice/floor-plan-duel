@@ -40,7 +40,7 @@ On the title screen:
 
 Dodge is a quick dash in the direction you're moving, diagonals included; standing still, it goes the way you last moved. It has a 1.2 s cooldown: the little arrow beside your player shows where a dodge will go, and dims while it recharges. After 90 s a round goes to sudden death and bullets speed up every 5 s.
 
-A bullet that only just misses you pops up a "Close!" and counts as a clutch dodge; the results screen shows each player's total.
+A bullet that only just misses you pops up a "Close!" and counts as a clutch dodge; the results screen shows each player's total. Bullets that hit a wall leave a splash of the shooter's colour on it, so the walls slowly fill with paint over a match.
 
 Power-ups flash a ring where they're about to appear, and a ring around each one shrinks as it expires:
 

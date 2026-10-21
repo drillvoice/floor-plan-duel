@@ -193,7 +193,10 @@ describe('firing', () => {
     let wallHits = 0;
     for (let t = 0; t < 30; t++) {
       step(s, [NO_INPUT, NO_INPUT]);
-      wallHits += s.events.filter((e) => e.type === 'wallHit').length;
+      const hits = s.events.filter((e) => e.type === 'wallHit');
+      wallHits += hits.length;
+      // Says whose bullet it was, so the renderer can paint the wall their colour.
+      for (const h of hits) expect(h).toMatchObject({ owner: 0 });
     }
     expect(wallHits).toBe(1);
     expect(s.players[1].hits).toBe(0);

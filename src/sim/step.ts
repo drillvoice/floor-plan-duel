@@ -302,9 +302,9 @@ function updateBullets(state: GameState, dt: number): void {
         if (dot(b.vel, n) < 0) b.vel = sub(b.vel, scale(n, 2 * dot(b.vel, n)));
         b.pos = add(c, scale(n, b.radius + wallClear + 0.01));
         b.bounces--;
-        state.events.push({ type: 'bounce', pos: { ...b.pos } });
+        state.events.push({ type: 'bounce', owner: b.owner, pos: { ...b.pos } });
       } else if (wall) {
-        state.events.push({ type: 'wallHit', pos: { ...b.pos } });
+        state.events.push({ type: 'wallHit', owner: b.owner, pos: { ...b.pos } });
         alive = false;
         checkNearMiss(state, b, targetIndex);
       } else if (gap < b.closestGap) {

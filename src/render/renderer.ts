@@ -8,7 +8,7 @@ import { MODIFIERS } from '../sim/modifiers';
 import { POWER_UP_CATEGORY, type GameEvent, type GameState, type PlayerIndex, type PowerUp, type PowerUpKind } from '../sim/types';
 import { CATEGORY_COLORS, drawPowerUpGlyph, powerUpColor } from './icons';
 import { drawLook } from './looks';
-import { add, scale, type Vec2 } from '../sim/vec';
+import { add, closestPointOnSegment, distPointSegment, scale, type Vec2 } from '../sim/vec';
 
 export const COLORS = {
   background: '#16181f',
@@ -123,6 +123,17 @@ const PLAYER_LIGHT = 3.2;
 const FLASH_LIGHT = 4;
 const FLASH_LIFE = 0.15;
 
+// Paint marks where bullets hit walls, in the shooter's colour. They build up
+// over a match (the oldest go once there are too many) and are drawn only on
+// the walls themselves.
+interface Splat {
+  pos: Vec2; // on the wall's centre line
+  color: string;
+  dots: { dx: number; dy: number; r: number }[]; // units, relative to pos
+  alpha: number;
+}
+const MAX_SPLATS = 800;
+
 interface Trail {
   from: Vec2;
   to: Vec2;
@@ -145,6 +156,11 @@ export class Renderer {
   private rings: Ring[] = [];
   private flashes: { pos: Vec2; age: number }[] = []; // muzzle flashes and impacts, for Lights Out
   private darkLayer: HTMLCanvasElement | null = null;
+  private splats: Splat[] = [];
+  private splatsFor: GameState | null = null; // the match the splats belong to
+  // Walls with their splats, redrawn only when a splat lands or the layout changes.
+  private wallLayer: HTMLCanvasElement | null = null;
+  private wallLayerKey = '';
   private callouts: Callout[] = [];
   private shake = 0;
   private screenFlash = 0;
@@ -204,9 +220,11 @@ export class Renderer {
         case 'wallHit':
           this.burst(e.pos, COLORS.wall, 4, 2);
           this.flashes.push({ pos: e.pos, age: FLASH_LIFE / 2 });
+          this.splat(state, e.pos, COLORS.players[e.owner], 1);
           break;
         case 'bounce':
           this.burst(e.pos, CATEGORY_COLORS.buff, 6, 3);
+          this.splat(state, e.pos, COLORS.players[e.owner], 0.6);
           break;
         case 'dodge':
           this.pendingDash.push({ player: e.player, from: e.from });
@@ -264,6 +282,28 @@ export class Renderer {
     this.shake = Math.max(0, this.shake - dt * 2.5);
     this.screenFlash = Math.max(0, this.screenFlash - dt);
     this.suddenDeathBanner = Math.max(0, this.suddenDeathBanner - dt);
+  }
+
+  // A paint mark on the wall nearest `pos`: a blob plus a couple of drips
+  // spread along the wall. `size` scales it (bounces leave a lighter mark).
+  private splat(state: GameState, pos: Vec2, color: string, size: number): void {
+    if (this.splatsFor !== state) {
+      this.splats = [];
+      this.splatsFor = state;
+    }
+    let wall = state.arena.walls[0];
+    for (const w of state.arena.walls) if (distPointSegment(pos, w.a, w.b) < distPointSegment(pos, wall.a, wall.b)) wall = w;
+    const at = closestPointOnSegment(pos, wall.a, wall.b);
+    const len = Math.hypot(wall.b.x - wall.a.x, wall.b.y - wall.a.y) || 1;
+    const along = { x: (wall.b.x - wall.a.x) / len, y: (wall.b.y - wall.a.y) / len };
+    const dots = [{ dx: 0, dy: 0, r: (0.22 + Math.random() * 0.1) * size }];
+    for (let n = 0; n < 3; n++) {
+      const d = (Math.random() * 2 - 1) * 0.55 * size;
+      dots.push({ dx: along.x * d, dy: along.y * d, r: (0.06 + Math.random() * 0.08) * size });
+    }
+    this.splats.push({ pos: at, color, dots, alpha: 0.55 + 0.25 * size * Math.random() });
+    if (this.splats.length > MAX_SPLATS) this.splats.shift();
+    this.wallLayerKey = '';
   }
 
   // Visual-only randomness is fine here: the renderer never touches game state.
@@ -357,8 +397,28 @@ export class Renderer {
     }
     ctx.stroke();
 
+    if (this.splatsFor !== state) {
+      this.splats = [];
+      this.splatsFor = state;
+      this.wallLayerKey = '';
+    }
+    ctx.drawImage(this.wallsWithSplats(state), 0, 0, this.width, this.height);
+  }
+
+  // The walls, with splats painted only where they overlap a wall, on a
+  // cached layer the size of the canvas.
+  private wallsWithSplats(state: GameState): HTMLCanvasElement {
+    const layer = (this.wallLayer ??= document.createElement('canvas'));
+    const key = `${this.canvas.width}x${this.canvas.height}:${this.origin.x},${this.origin.y},${this.scale}`;
+    if (key === this.wallLayerKey) return layer;
+    this.wallLayerKey = key;
+    layer.width = this.canvas.width;
+    layer.height = this.canvas.height;
+    const ctx = layer.getContext('2d')!;
+    const dpr = this.canvas.width / this.width;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.strokeStyle = COLORS.wall;
-    ctx.lineWidth = state.cfg.map.wallThickness * s;
+    ctx.lineWidth = state.cfg.map.wallThickness * this.scale;
     ctx.lineCap = 'round';
     ctx.beginPath();
     for (const w of state.arena.walls) {
@@ -368,6 +428,19 @@ export class Renderer {
       ctx.lineTo(b.x, b.y);
     }
     ctx.stroke();
+    // Paint only lands on wall that's already there.
+    ctx.globalCompositeOperation = 'source-atop';
+    for (const sp of this.splats) {
+      ctx.fillStyle = hexAlpha(sp.color, sp.alpha);
+      ctx.beginPath();
+      for (const d of sp.dots) {
+        const c = this.toScreen({ x: sp.pos.x + d.dx, y: sp.pos.y + d.dy });
+        ctx.moveTo(c.x + d.r * this.scale, c.y);
+        ctx.arc(c.x, c.y, d.r * this.scale, 0, Math.PI * 2);
+      }
+      ctx.fill();
+    }
+    return layer;
   }
 
   // Lights Out: cover the arena in darkness, with soft holes where there's

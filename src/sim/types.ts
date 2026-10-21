@@ -118,8 +118,8 @@ export type GameEvent =
   | { type: 'fire'; player: PlayerIndex; pos: Vec2 }
   | { type: 'hit'; player: PlayerIndex; pos: Vec2; hits: number }
   | { type: 'nearMiss'; player: PlayerIndex; pos: Vec2 }
-  | { type: 'wallHit'; pos: Vec2 }
-  | { type: 'bounce'; pos: Vec2 }
+  | { type: 'wallHit'; owner: PlayerIndex; pos: Vec2 }
+  | { type: 'bounce'; owner: PlayerIndex; pos: Vec2 }
   | { type: 'dodge'; player: PlayerIndex; from: Vec2; dir: Vec2 }
   | { type: 'roundStart'; round: number; modifier: ModifierId | null }
   | { type: 'roundEnd'; winner: PlayerIndex | null }

@@ -132,23 +132,24 @@ export const CONFIG = {
 export type Config = typeof CONFIG;
 
 // Physical key codes (KeyboardEvent.code), so layouts like AZERTY still map
-// to the same physical positions.
+// to the same physical positions. Shoot sits under the index finger and dodge
+// under the middle finger: F/G for the left hand, / and . for the right.
 export const KEY_BINDINGS = {
   p1: {
     up: 'KeyW',
     down: 'KeyS',
     left: 'KeyA',
     right: 'KeyD',
-    dodge: 'KeyF',
-    shoot: 'KeyG',
+    shoot: 'KeyF',
+    dodge: 'KeyG',
   },
   p2: {
     up: 'ArrowUp',
     down: 'ArrowDown',
     left: 'ArrowLeft',
     right: 'ArrowRight',
-    dodge: 'Comma',
-    shoot: 'Period',
+    dodge: 'Period',
+    shoot: 'Slash',
   },
   pause: 'Escape',
 };

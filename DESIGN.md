@@ -20,8 +20,8 @@ Both players share one keyboard, split left and right so hands don't collide. Di
 | Action | Player 1 (left) | Player 2 (right) |
 | --- | --- | --- |
 | Move | W A S D | Arrow keys |
-| Dodge | F | , (comma) |
-| Shoot | G | . (full stop) |
+| Shoot | F | / (slash) |
+| Dodge | G | . (full stop) |
 | Pause | Esc | Esc |
 
 Either player slot can be switched to the bot from the start screen. A Gamepad API mapping and mobile touch controls (left joystick, three right-thumb buttons) come later; the input layer is built so adding them doesn't touch game logic.

@@ -26,13 +26,14 @@ On the title screen:
 - **H** opens hotseat mode, for a group taking turns (see below).
 - **Tab** changes the map; **E** opens the map editor (on a saved map, or the one you edited last).
 - **M** mutes all sound; **N** turns the music on or off (also works mid-match). The music speeds up as the round goes on and gets busier near the end.
+- **B** toggles full screen (also works mid-match), or use the button in the top-right corner of the menus. Esc leaves full screen too.
 - The key caps light up while held: use this to check your keyboard can register everyone's keys at once.
 
 | Action | Player 1 | Player 2 |
 | --- | --- | --- |
 | Move | W A S D | Arrow keys |
-| Dodge | F | , (comma) |
-| Shoot (hold) | G | . (full stop) |
+| Shoot (hold) | F | / (slash) |
+| Dodge | G | . (full stop) |
 | Pause | Esc | Esc |
 
 Dodge is a quick dash in the direction you're moving, diagonals included; standing still, it goes the way you last moved. It has a 1.2 s cooldown: the little arrow beside your player shows where a dodge will go, and dims while it recharges. After 90 s a round goes to sudden death and bullets speed up every 5 s.

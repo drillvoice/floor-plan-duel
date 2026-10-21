@@ -26,6 +26,21 @@ const keyboard = new Keyboard();
 const sound = new Sound();
 const music = new Music(sound);
 
+// Full screen, from B anywhere or the corner button on the menus. Browsers
+// only allow it in response to a key press or click.
+const fullscreenButton = document.getElementById('fullscreen') as HTMLButtonElement;
+function toggleFullscreen(): void {
+  if (document.fullscreenElement) void document.exitFullscreen();
+  else void document.documentElement.requestFullscreen().catch(() => {});
+}
+// Don't take focus, or Enter would press the button instead of starting.
+fullscreenButton.addEventListener('mousedown', (e) => e.preventDefault());
+fullscreenButton.addEventListener('click', toggleFullscreen);
+document.addEventListener('fullscreenchange', () => {
+  fullscreenButton.classList.toggle('on', !!document.fullscreenElement);
+  fullscreenButton.title = document.fullscreenElement ? 'Exit full screen (B)' : 'Full screen (B)';
+});
+
 // Each slot is a human on the keyboard or a bot at some difficulty.
 type Slot = 'human' | Difficulty;
 const SLOT_ORDER: Slot[] = ['human', 'easy', 'normal', 'hard'];
@@ -149,6 +164,10 @@ keyboard.onPress((code) => {
     sound.toggleMute();
     return;
   }
+  if (code === 'KeyB' && document.fullscreenEnabled) {
+    toggleFullscreen();
+    return;
+  }
   if (code === 'KeyN') {
     music.toggle();
     if (music.enabled && screen.kind === 'match' && screen.state.phase !== 'matchOver') music.start();
@@ -209,6 +228,7 @@ let last = performance.now();
 function frame(now: number): void {
   const elapsed = Math.min(0.1, (now - last) / 1000);
   last = now;
+  fullscreenButton.hidden = !document.fullscreenEnabled || (screen.kind !== 'title' && screen.kind !== 'hotseat');
 
   if (screen.kind === 'title') {
     accumulator = 0;

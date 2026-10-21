@@ -16,6 +16,10 @@ npm run preview  # serve the build locally
 
 The built site works offline after the first visit and can be installed as an app from the browser.
 
+### Deploy to Vercel
+
+`vercel.json` holds the settings. In the Vercel dashboard choose **Add New → Project**, import this GitHub repo and click **Deploy**; no environment variables are needed. Every push to `main` then updates the live site, and other branches get preview URLs.
+
 ## Play
 
 On the title screen:

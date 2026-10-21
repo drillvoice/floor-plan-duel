@@ -52,6 +52,17 @@
         cursor: pointer;
         white-space: nowrap;
       }
+      #editor-toolbar .save-status {
+        color: #8b90a0;
+        white-space: nowrap;
+        margin-left: 4px;
+      }
+      #editor-toolbar .save-status[data-state='saved'] {
+        color: #7ed957;
+      }
+      #editor-toolbar .save-status[data-state='failed'] {
+        color: #ff4d4d;
+      }
       #editor-toolbar button:hover,
       #editor-toolbar select:hover {
         background: #323746;

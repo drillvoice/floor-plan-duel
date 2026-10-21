@@ -1,9 +1,10 @@
 // Map editor: draw walls on a snapping grid, select and delete them, move the
-// spawns, undo/redo, save to this browser, export/import JSON, and test play.
+// spawns, undo/redo, export/import JSON, and test play. Every change is saved
+// to this browser straight away.
 
 import { CONFIG } from '../config';
 import { isTextField } from '../input/keyboard';
-import { listSavedMaps, saveDraft, saveMap } from '../maps/storage';
+import { deleteMap, listSavedMaps, newMapId, saveMap, type SavedMap } from '../maps/storage';
 import { THE_FLAT } from '../maps/theFlat';
 import { autoSpawns, parseMapJson, validateMap } from '../maps/validate';
 import { COLORS } from '../render/renderer';
@@ -36,7 +37,9 @@ export function blankMap(): MapData {
 
 export class Editor {
   private ctx: CanvasRenderingContext2D;
-  private map: MapData = blankMap();
+  private map: SavedMap = { ...blankMap(), id: newMapId() };
+  private saveState: 'unsaved' | 'saved' | 'failed' = 'unsaved';
+  private saveStatus: HTMLSpanElement;
   private selected: number | null = null;
   private drag: Drag | null = null;
   private cursor: Vec2 | null = null;
@@ -65,8 +68,9 @@ export class Editor {
     this.nameInput = el('input', { type: 'text', maxLength: 40, title: 'Map name', ariaLabel: 'Map name' });
     this.nameInput.addEventListener('input', () => {
       this.map.name = this.nameInput.value.trim() || 'Untitled';
-      saveDraft(this.map);
+      this.changed();
     });
+    this.saveStatus = el('span', { className: 'save-status' });
     this.loadSelect = el('select', { title: 'Load a map', ariaLabel: 'Load a map' });
     this.loadSelect.addEventListener('change', () => this.loadChoice());
     this.fileInput = el('input', { type: 'file', accept: '.json,application/json', hidden: true });
@@ -82,14 +86,15 @@ export class Editor {
     this.toolbar.append(
       this.nameInput,
       this.loadSelect,
-      button('New', 'Start a blank map', () => this.replaceMap(blankMap(), 'New map')),
-      button('Save', 'Save to this browser', () => this.save()),
+      button('New', 'Start a blank map', () => this.switchTo(blankMap(), 'New map. It saves as soon as you change it.')),
+      button('Delete', 'Delete this map from this browser', () => this.deleteCurrent()),
       button('Auto spawns', 'Place spawns as far apart as possible', () => this.placeAutoSpawns()),
       button('Export', 'Download as a .json file', () => this.exportFile()),
       button('Import', 'Load a .json map file', () => this.fileInput.click()),
       this.fileInput,
       button('Test play ▶', 'Play a match on this map (T)', () => this.testPlay()),
       button('Back', 'Back to the title screen (Esc)', () => this.callbacks.onExit()),
+      this.saveStatus,
     );
     document.body.append(this.toolbar);
 
@@ -102,17 +107,25 @@ export class Editor {
     });
   }
 
+  // A map without an id (the built-in one, a new one) gets one here, and is
+  // saved as soon as it's changed.
   open(map: MapData): void {
     this.active = true;
     this.toolbar.hidden = false;
-    this.map = structuredClone(map);
-    this.selected = null;
     this.drag = null;
+    this.setMap(map);
+  }
+
+  private setMap(map: MapData): void {
+    const known = map.id !== undefined && listSavedMaps().some((m) => m.id === map.id);
+    this.map = { ...structuredClone(map), id: map.id ?? newMapId() };
+    this.saveState = known ? 'saved' : 'unsaved';
+    this.selected = null;
     this.undoStack = [];
     this.redoStack = [];
     this.nameInput.value = this.map.name;
     this.refreshLoadList();
-    saveDraft(this.map);
+    this.updateSaveStatus();
   }
 
   close(): void {
@@ -121,7 +134,7 @@ export class Editor {
     this.drag = null;
   }
 
-  currentMap(): MapData {
+  currentMap(): SavedMap {
     return structuredClone(this.map);
   }
 
@@ -134,7 +147,19 @@ export class Editor {
   }
 
   private changed(): void {
-    saveDraft(this.map);
+    this.saveState = saveMap(this.currentMap()) ? 'saved' : 'failed';
+    this.refreshLoadList();
+    this.updateSaveStatus();
+  }
+
+  private updateSaveStatus(): void {
+    const text = {
+      saved: '✓ Saved in this browser',
+      unsaved: 'Saves when you make a change',
+      failed: "⚠ Can't save in this browser: use Export",
+    }[this.saveState];
+    this.saveStatus.textContent = text;
+    this.saveStatus.dataset.state = this.saveState;
   }
 
   private undo(): void {
@@ -142,6 +167,7 @@ export class Editor {
     if (!prev) return;
     this.redoStack.push(JSON.stringify(this.map));
     this.map = JSON.parse(prev);
+    this.nameInput.value = this.map.name;
     this.selected = null;
     this.changed();
   }
@@ -151,17 +177,20 @@ export class Editor {
     if (!next) return;
     this.undoStack.push(JSON.stringify(this.map));
     this.map = JSON.parse(next);
+    this.nameInput.value = this.map.name;
     this.selected = null;
     this.changed();
   }
 
-  private replaceMap(map: MapData, message: string): void {
-    this.snapshot();
-    this.map = structuredClone(map);
-    this.nameInput.value = this.map.name;
-    this.selected = null;
-    this.changed();
+  private switchTo(map: MapData, message: string): void {
+    this.setMap(map);
     this.flash(message);
+  }
+
+  private deleteCurrent(): void {
+    if (this.saveState === 'saved' && !confirm(`Delete “${this.map.name}” from this browser? This can't be undone.`)) return;
+    deleteMap(this.map.id);
+    this.switchTo(blankMap(), `Deleted “${this.map.name}”.`);
   }
 
   private deleteSelected(): void {
@@ -181,24 +210,11 @@ export class Editor {
     this.flash('Spawns placed as far apart as possible.');
   }
 
-  private save(): void {
-    let name = this.map.name.trim() || 'Untitled';
-    if (name === THE_FLAT.name) name = `${name} (custom)`;
-    this.map.name = name;
-    this.nameInput.value = name;
-    if (saveMap(this.currentMap())) {
-      this.refreshLoadList();
-      this.flash(`Saved “${name}” in this browser. Pick it on the title screen with Tab.`);
-    } else {
-      this.flash('Could not save: browser storage is unavailable. Use Export instead.');
-    }
-  }
-
   private refreshLoadList(): void {
     this.loadSelect.replaceChildren(
       el('option', { textContent: 'Load…', value: '' }),
       el('option', { textContent: THE_FLAT.name, value: '__builtin' }),
-      ...listSavedMaps().map((m, i) => el('option', { textContent: m.name, value: String(i) })),
+      ...listSavedMaps().map((m) => el('option', { textContent: m.name, value: m.id })),
     );
   }
 
@@ -207,8 +223,8 @@ export class Editor {
     this.loadSelect.value = '';
     this.loadSelect.blur();
     if (!v) return;
-    const map = v === '__builtin' ? { ...structuredClone(THE_FLAT), name: 'My flat' } : listSavedMaps()[Number(v)];
-    if (map) this.replaceMap(map, `Loaded “${map.name}”.`);
+    const map = v === '__builtin' ? { ...structuredClone(THE_FLAT), name: 'My flat' } : listSavedMaps().find((m) => m.id === v);
+    if (map) this.switchTo(map, `Loaded “${map.name}”.`);
   }
 
   private exportFile(): void {
@@ -223,7 +239,9 @@ export class Editor {
     this.fileInput.value = '';
     if (!file) return;
     try {
-      this.replaceMap(parseMapJson(await file.text()), `Imported “${file.name}”.`);
+      // An import is always a new map, even if it came from this browser.
+      this.switchTo({ ...parseMapJson(await file.text()), id: newMapId() }, `Imported “${file.name}”.`);
+      this.changed();
     } catch (err) {
       this.flash(`Couldn't import: ${(err as Error).message}`);
     }

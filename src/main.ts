@@ -2,7 +2,7 @@ import { BotPlayer, type Difficulty } from './bot/bot';
 import { KEY_BINDINGS } from './config';
 import { Keyboard, KeyboardPlayer } from './input/keyboard';
 import type { InputSource } from './input/types';
-import { listSavedMaps, loadDraft } from './maps/storage';
+import { lastEditedMap, listSavedMaps } from './maps/storage';
 import { THE_FLAT } from './maps/theFlat';
 import { Sound } from './render/audio';
 import { Renderer } from './render/renderer';
@@ -109,8 +109,9 @@ keyboard.onPress((code) => {
     else if (code === 'Tab') mapIndex = (mapIndex + 1) % availableMaps().length;
     else if (code === 'KeyE') {
       const map = selectedMap();
-      // A saved map opens as itself; the built-in one opens the last draft, or a copy.
-      openEditor(map !== THE_FLAT ? map : (loadDraft() ?? { ...structuredClone(THE_FLAT), name: 'My flat' }));
+      // A saved map opens as itself; from the built-in one, reopen the map
+      // edited last, or start from a copy.
+      openEditor(map !== THE_FLAT ? map : (lastEditedMap() ?? { ...structuredClone(THE_FLAT), name: 'My flat' }));
     }
     return;
   }

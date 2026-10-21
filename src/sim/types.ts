@@ -26,6 +26,7 @@ export interface Wall {
 
 // Saved map format (JSON). Outer walls are implied by width/height.
 export interface MapData {
+  id?: string; // set once a map is saved in the editor
   name: string;
   width: number;
   height: number;

@@ -22,7 +22,7 @@ On the title screen:
 
 - **Enter** starts a match, best of 5 rounds, 3 hits to lose a round.
 - **1 / 2** switch each player between Human and Bot (Easy, Normal, Hard). Two bots will play each other.
-- **Tab** changes the map; **E** opens the map editor.
+- **Tab** changes the map; **E** opens the map editor (on a saved map, or the one you edited last).
 - **M** mutes sound.
 - The key caps light up while held: use this to check your keyboard can register everyone's keys at once.
 
@@ -34,7 +34,7 @@ On the title screen:
 | Dodge right | H | / (slash) |
 | Pause | Esc | Esc |
 
-Dodges are a quick sideways dash, left or right of the way you face; you always face your opponent. A dodge has a 1.2 s cooldown (the little ticks beside your player dim while it recharges). After 90 s a round goes to sudden death and bullets speed up every 5 s.
+Dodges are a quick dash to the left (west) or right (east) of the screen. A dodge has a 1.2 s cooldown (the little ticks beside your player dim while it recharges). After 90 s a round goes to sudden death and bullets speed up every 5 s.
 
 Power-ups flash a ring where they're about to appear, and a ring around each one shrinks as it expires:
 
@@ -49,7 +49,7 @@ Press **E** on the title screen.
 - Drag to draw a wall. Ends snap to a half-unit grid and to existing wall ends; hold Shift for straight lines.
 - Click a wall to select it, Delete or Backspace to remove it. Ctrl+Z / Ctrl+Shift+Z undo and redo.
 - Drag the 1 and 2 markers to move the spawns, or use **Auto spawns** to place them as far apart as possible.
-- **Save** keeps the map in this browser; it then appears on the title screen (Tab). **Export** / **Import** move maps around as `.json` files.
+- Every change is saved in this browser straight away (the toolbar shows ✓ Saved), and saved maps appear on the title screen (Tab). **Delete** removes the current map. **Export** / **Import** move maps around as `.json` files.
 - **Test play** (or T) starts a match on the map; leaving the match brings you back to the editor.
 
 The status line at the bottom warns if a spawn overlaps a wall or the spawns can't reach each other.

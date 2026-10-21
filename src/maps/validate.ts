@@ -71,6 +71,7 @@ export function parseMapJson(text: string): MapData {
   if (!Array.isArray(data.spawns) || data.spawns.length !== 2 || !data.spawns.every(point))
     throw new Error('A map needs exactly two spawn points.');
   return {
+    ...(typeof data.id === 'string' && data.id.length <= 64 ? { id: data.id } : {}),
     name: typeof data.name === 'string' && data.name.trim() ? data.name.trim().slice(0, 40) : 'Imported map',
     width: data.width,
     height: data.height,

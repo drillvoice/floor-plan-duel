@@ -498,7 +498,7 @@ export class Renderer {
   }
 
   // Title screen with a live key test, so ghosting shows up before a match.
-  drawTitle(isHeld: (code: string) => boolean): void {
+  drawTitle(isHeld: (code: string) => boolean, slots: readonly string[]): void {
     const ctx = this.ctx;
     const cx = this.width / 2;
     ctx.fillStyle = COLORS.background;
@@ -514,8 +514,8 @@ export class Renderer {
 
     const top = this.height * 0.42;
     const colW = Math.min(360, this.width / 2 - 20);
-    this.drawKeyPanel(KEY_BINDINGS.p1, 0, cx - colW / 2 - 10, top, isHeld);
-    this.drawKeyPanel(KEY_BINDINGS.p2, 1, cx + colW / 2 + 10, top, isHeld);
+    this.drawKeyPanel(KEY_BINDINGS.p1, 0, cx - colW / 2 - 10, top, isHeld, slots[0]);
+    this.drawKeyPanel(KEY_BINDINGS.p2, 1, cx + colW / 2 + 10, top, isHeld, slots[1]);
 
     ctx.font = '400 14px system-ui, sans-serif';
     ctx.fillStyle = COLORS.muted;
@@ -527,12 +527,27 @@ export class Renderer {
     );
   }
 
-  private drawKeyPanel(keys: PlayerKeys, i: PlayerIndex, cx: number, top: number, isHeld: (code: string) => boolean) {
+  private drawKeyPanel(
+    keys: PlayerKeys,
+    i: PlayerIndex,
+    cx: number,
+    top: number,
+    isHeld: (code: string) => boolean,
+    slot: string,
+  ) {
     const ctx = this.ctx;
     ctx.fillStyle = COLORS.players[i];
     ctx.font = '700 22px system-ui, sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText(PLAYER_NAMES[i], cx, top);
+    const who = slot === 'human' ? 'Human' : `Bot · ${slot[0].toUpperCase()}${slot.slice(1)}`;
+    ctx.fillStyle = COLORS.text;
+    ctx.font = '600 16px system-ui, sans-serif';
+    ctx.fillText(who, cx, top + 190);
+    ctx.fillStyle = COLORS.muted;
+    ctx.font = '400 13px system-ui, sans-serif';
+    ctx.fillText(`press ${i + 1} to change`, cx, top + 212);
+    if (slot !== 'human') ctx.globalAlpha = 0.3;
     const k = 42;
     const gap = 6;
     const cap = (code: string, x: number, y: number, caption?: string) => {
@@ -567,6 +582,7 @@ export class Renderer {
     cap(keys.dodgeLeft, ax, y0 + k + gap, 'dodge L');
     cap(keys.shoot, ax + step, y0 + k + gap, 'shoot');
     cap(keys.dodgeRight, ax + 2 * step, y0 + k + gap, 'dodge R');
+    ctx.globalAlpha = 1;
   }
 }
 

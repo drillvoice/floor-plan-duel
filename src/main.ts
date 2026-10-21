@@ -1,3 +1,4 @@
+import { BotPlayer, type Difficulty } from './bot/bot';
 import { KEY_BINDINGS } from './config';
 import { Keyboard, KeyboardPlayer } from './input/keyboard';
 import type { InputSource } from './input/types';
@@ -13,16 +14,48 @@ const canvas = document.getElementById('game') as HTMLCanvasElement;
 const renderer = new Renderer(canvas);
 const keyboard = new Keyboard();
 const sound = new Sound();
-const inputs: [InputSource, InputSource] = [
-  new KeyboardPlayer(keyboard, KEY_BINDINGS.p1),
-  new KeyboardPlayer(keyboard, KEY_BINDINGS.p2),
-];
+
+// Each slot is a human on the keyboard or a bot at some difficulty.
+type Slot = 'human' | Difficulty;
+const SLOT_ORDER: Slot[] = ['human', 'easy', 'normal', 'hard'];
+const SLOTS_KEY = 'fpd.slots';
+
+function loadSlots(): [Slot, Slot] {
+  try {
+    const saved = JSON.parse(localStorage.getItem(SLOTS_KEY) ?? 'null');
+    if (Array.isArray(saved) && saved.length === 2 && saved.every((s) => SLOT_ORDER.includes(s))) return saved as [Slot, Slot];
+  } catch {
+    // Storage unavailable or corrupt: fall back to two humans.
+  }
+  return ['human', 'human'];
+}
+
+const slots = loadSlots();
+let inputs: [InputSource, InputSource] = makeInputs(0);
+
+function makeInputs(seed: number): [InputSource, InputSource] {
+  const make = (slot: Slot, i: 0 | 1): InputSource =>
+    slot === 'human'
+      ? new KeyboardPlayer(keyboard, i === 0 ? KEY_BINDINGS.p1 : KEY_BINDINGS.p2)
+      : new BotPlayer(slot, seed * 2 + i + 1);
+  return [make(slots[0], 0), make(slots[1], 1)];
+}
+
+function cycleSlot(i: 0 | 1): void {
+  slots[i] = SLOT_ORDER[(SLOT_ORDER.indexOf(slots[i]) + 1) % SLOT_ORDER.length];
+  try {
+    localStorage.setItem(SLOTS_KEY, JSON.stringify(slots));
+  } catch {
+    // Not saved; the choice still applies this session.
+  }
+}
 
 let screen: Screen = { kind: 'title' };
 
 function startMatch(map: MapData): void {
   // The seed is picked here, outside the sim; the sim itself never reads the clock.
   const seed = (Date.now() ^ (performance.now() * 1000)) >>> 0;
+  inputs = makeInputs(seed);
   screen = { kind: 'match', state: createGame(map, seed), map, paused: false };
   keyboard.clear();
 }
@@ -35,6 +68,8 @@ keyboard.onPress((code) => {
   }
   if (screen.kind === 'title') {
     if (code === 'Enter' || code === 'Space') startMatch(THE_FLAT);
+    else if (code === 'Digit1') cycleSlot(0);
+    else if (code === 'Digit2') cycleSlot(1);
     return;
   }
   const match = screen;
@@ -73,7 +108,7 @@ function frame(now: number): void {
 
   if (screen.kind === 'title') {
     accumulator = 0;
-    renderer.drawTitle((code) => keyboard.isHeld(code));
+    renderer.drawTitle((code) => keyboard.isHeld(code), slots);
   } else {
     const match = screen;
     if (!match.paused) {

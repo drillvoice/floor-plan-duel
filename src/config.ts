@@ -71,6 +71,22 @@ export const CONFIG = {
     molasses: { speedMultiplier: 0.6, duration: 4 },
   },
 
+  bot: {
+    difficulty: {
+      easy: { reactionDelay: 0.35, missChance: 0.4 },
+      normal: { reactionDelay: 0.2, missChance: 0.2 },
+      hard: { reactionDelay: 0.08, missChance: 0.05 },
+    },
+    // Dodge a bullet that will pass within this margin in the next `threatHorizon` s.
+    threatHorizon: 0.4,
+    threatMargin: 0.2,
+    preferredDistance: 7,
+    distanceTolerance: 1.5,
+    strafeSwitchMin: 0.8,
+    strafeSwitchMax: 2.2,
+    repathInterval: 0.25,
+  },
+
   map: {
     wallThickness: 0.3,
     defaultWidth: 24,

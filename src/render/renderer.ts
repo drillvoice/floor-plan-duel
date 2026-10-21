@@ -498,7 +498,7 @@ export class Renderer {
   }
 
   // Title screen with a live key test, so ghosting shows up before a match.
-  drawTitle(isHeld: (code: string) => boolean, slots: readonly string[]): void {
+  drawTitle(isHeld: (code: string) => boolean, slots: readonly string[], mapName: string, mapCount: number): void {
     const ctx = this.ctx;
     const cx = this.width / 2;
     ctx.fillStyle = COLORS.background;
@@ -511,6 +511,12 @@ export class Renderer {
     ctx.font = '500 20px system-ui, sans-serif';
     ctx.fillStyle = COLORS.muted;
     ctx.fillText('Press Enter to start  ·  M to mute', cx, this.height * 0.2 + 52);
+    ctx.fillStyle = COLORS.text;
+    ctx.font = '600 17px system-ui, sans-serif';
+    ctx.fillText(`Map: ${mapName}`, cx, this.height * 0.2 + 92);
+    ctx.fillStyle = COLORS.muted;
+    ctx.font = '400 13px system-ui, sans-serif';
+    ctx.fillText(`${mapCount > 1 ? 'Tab to change map  ·  ' : ''}E to open the map editor`, cx, this.height * 0.2 + 114);
 
     const top = this.height * 0.42;
     const colW = Math.min(360, this.width / 2 - 20);

@@ -6,7 +6,12 @@ const BOUND_CODES = new Set<string>([
   ...Object.values(KEY_BINDINGS.p1),
   ...Object.values(KEY_BINDINGS.p2),
   KEY_BINDINGS.pause,
+  'Tab',
 ]);
+
+export function isTextField(target: EventTarget | null): boolean {
+  return target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement;
+}
 
 // Tracks the whole keyboard. Bound keys have their browser defaults blocked
 // (arrow keys scroll, "/" opens quick find in Firefox).
@@ -17,6 +22,7 @@ export class Keyboard {
 
   constructor(target: Window = window) {
     target.addEventListener('keydown', (e) => {
+      if (isTextField(e.target)) return;
       if (BOUND_CODES.has(e.code)) e.preventDefault();
       if (e.repeat) return;
       this.held.add(e.code);
@@ -24,7 +30,7 @@ export class Keyboard {
       for (const l of this.listeners) l(e.code);
     });
     target.addEventListener('keyup', (e) => {
-      if (BOUND_CODES.has(e.code)) e.preventDefault();
+      if (BOUND_CODES.has(e.code) && !isTextField(e.target)) e.preventDefault();
       this.held.delete(e.code);
     });
     // Keys released while the window is unfocused never send keyup.

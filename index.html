@@ -15,6 +15,44 @@
       canvas {
         display: block;
       }
+      #editor-toolbar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 64px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 0 16px;
+        box-sizing: border-box;
+        overflow-x: auto;
+        font: 14px system-ui, sans-serif;
+      }
+      #editor-toolbar[hidden] {
+        display: none;
+      }
+      #editor-toolbar input[type='text'],
+      #editor-toolbar select,
+      #editor-toolbar button {
+        font: inherit;
+        color: #f2efe8;
+        background: #262a35;
+        border: 1px solid #3a3f4d;
+        border-radius: 6px;
+        padding: 7px 12px;
+      }
+      #editor-toolbar input[type='text'] {
+        width: 160px;
+      }
+      #editor-toolbar button {
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      #editor-toolbar button:hover,
+      #editor-toolbar select:hover {
+        background: #323746;
+      }
     </style>
   </head>
   <body>

@@ -1,4 +1,4 @@
-import type { Config, PowerUpKind } from '../config';
+import type { Config, ModifierId, PowerUpKind } from '../config';
 import type { Grid } from './grid';
 import type { Vec2 } from './vec';
 
@@ -119,7 +119,7 @@ export type GameEvent =
   | { type: 'wallHit'; pos: Vec2 }
   | { type: 'bounce'; pos: Vec2 }
   | { type: 'dodge'; player: PlayerIndex; from: Vec2; dir: Vec2 }
-  | { type: 'roundStart'; round: number }
+  | { type: 'roundStart'; round: number; modifier: ModifierId | null }
   | { type: 'roundEnd'; winner: PlayerIndex | null }
   | { type: 'matchEnd'; winner: PlayerIndex }
   | { type: 'suddenDeath' }
@@ -129,7 +129,9 @@ export type GameEvent =
   | { type: 'shieldBlock'; player: PlayerIndex; pos: Vec2 };
 
 export interface GameState {
-  cfg: Config;
+  cfg: Config; // rules for the current round: baseCfg plus its modifier
+  baseCfg: Config; // rules for the match
+  modifier: ModifierId | null; // this round's modifier
   arena: Arena;
   tick: number;
   phase: Phase;

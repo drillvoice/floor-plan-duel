@@ -6,11 +6,14 @@
 // to set each bot separately, --seed S, --json for machine-readable output,
 // and --set path=value (repeatable) to try a config change without editing
 // config.ts, e.g. --set bullet.aimLead=0 --set fire.cooldown=0.5
+// --modifiers plays every round under a random round modifier and adds a
+// breakdown by modifier.
 
 import { BotPlayer, type Difficulty } from '../src/bot/bot';
 import { CONFIG, type Config } from '../src/config';
 import { THE_FLAT } from '../src/maps/theFlat';
 import { createGame, spawnFor, step } from '../src/sim/step';
+import { MODIFIERS, type ModifierId } from '../src/sim/modifiers';
 import type { PlayerIndex, PowerUpKind } from '../src/sim/types';
 
 function arg(name: string, fallback: string): string {
@@ -41,9 +44,11 @@ for (const o of overrides) {
   if (!(last in obj)) throw new Error(`Unknown config path: ${path}`);
   obj[last] = JSON.parse(raw);
 }
+if (process.argv.includes('--modifiers')) cfg.modifiers.enabled = true;
 const MAX_TICKS = CONFIG.tickRate * 60 * 30; // safety cap: 30 minutes per match
 
 interface RoundRecord {
+  modifier: ModifierId | null;
   winner: PlayerIndex | null;
   winnerSpawn: number | null;
   length: number;
@@ -65,7 +70,8 @@ for (let m = 0; m < matches; m++) {
   const seed = baseSeed * 100003 + m;
   const state = createGame(THE_FLAT, seed, cfg);
   const bots = [new BotPlayer(d1, seed * 2 + 1), new BotPlayer(d2, seed * 2 + 2)] as const;
-  let current: RoundRecord = { winner: null, winnerSpawn: null, length: 0, suddenDeath: false, hits: 0, shots: 0, dodges: 0, shieldBlocks: 0, pickups: [] };
+  const newRound = (): RoundRecord => ({ modifier: state.modifier, winner: null, winnerSpawn: null, length: 0, suddenDeath: false, hits: 0, shots: 0, dodges: 0, shieldBlocks: 0, pickups: [] });
+  let current = newRound();
   let ticks = 0;
   while (state.phase !== 'matchOver' && ticks < MAX_TICKS) {
     step(state, [bots[0].sample(state, 0), bots[1].sample(state, 1)]);
@@ -76,6 +82,7 @@ for (let m = 0; m < matches; m++) {
       else if (e.type === 'dodge') current.dodges++;
       else if (e.type === 'shieldBlock') current.shieldBlocks++;
       else if (e.type === 'pickup') current.pickups.push({ kind: e.kind, player: e.player });
+      else if (e.type === 'roundStart') current.modifier = e.modifier;
       else if (e.type === 'roundEnd') {
         current.winner = e.winner;
         current.winnerSpawn = e.winner === null ? null : THE_FLAT.spawns.findIndex((sp) => {
@@ -85,7 +92,7 @@ for (let m = 0; m < matches; m++) {
         current.length = state.roundTime;
         current.suddenDeath = state.roundTime > state.cfg.round.timeLimit;
         rounds.push(current);
-        current = { winner: null, winnerSpawn: null, length: 0, suddenDeath: false, hits: 0, shots: 0, dodges: 0, shieldBlocks: 0, pickups: [] };
+        current = newRound();
       }
     }
   }
@@ -103,6 +110,20 @@ const pickupStats = kinds.map((kind) => {
   const all = decided.flatMap((r) => r.pickups.filter((p) => p.kind === kind).map((p) => p.player === r.winner));
   return { kind, pickups: all.length, perRound: all.length / Math.max(1, rounds.length), byWinner: mean(all.map(Number)) };
 });
+
+const modifierStats = cfg.modifiers.enabled
+  ? cfg.modifiers.pool.map((id) => {
+      const rs = rounds.filter((r) => r.modifier === id);
+      return {
+        id,
+        rounds: rs.length,
+        avgRoundLength: mean(rs.map((r) => r.length)),
+        hitsPerRound: mean(rs.map((r) => r.hits)),
+        shotsPerRound: mean(rs.map((r) => r.shots)),
+        suddenDeathRate: rs.filter((r) => r.suddenDeath).length / Math.max(1, rs.length),
+      };
+    })
+  : [];
 
 const spawnWins = [0, 1].map((s) => decided.filter((r) => r.winnerSpawn === s).length / Math.max(1, decided.length));
 const summary = {
@@ -124,6 +145,7 @@ const summary = {
   hitRate: rounds.reduce((a, r) => a + r.hits, 0) / Math.max(1, rounds.reduce((a, r) => a + r.shots, 0)),
   shieldBlocksPerRound: mean(rounds.map((r) => r.shieldBlocks)),
   powerUps: pickupStats,
+  modifiers: modifierStats,
   simSeconds: totalTicks / CONFIG.tickRate,
   wallSeconds: (Date.now() - started) / 1000,
 };
@@ -149,6 +171,16 @@ if (asJson) {
     '',
     'Power-up        pickups/round   picked by round winner',
     ...pickupStats.map((p) => `  ${p.kind.padEnd(14)} ${p.perRound.toFixed(2).padStart(8)}        ${pct(p.byWinner).padStart(6)}`),
+    ...(modifierStats.length
+      ? [
+          '',
+          'Modifier          rounds   avg length   hits   shots   sudden death',
+          ...modifierStats.map(
+            (m) =>
+              `  ${MODIFIERS[m.id].name.padEnd(16)} ${String(m.rounds).padStart(5)}   ${m.avgRoundLength.toFixed(1).padStart(8)} s   ${m.hitsPerRound.toFixed(2).padStart(4)}  ${m.shotsPerRound.toFixed(1).padStart(6)}   ${pct(m.suddenDeathRate).padStart(8)}`,
+          ),
+        ]
+      : []),
     '',
     'Targets',
     `  ${ok(summary.avgRoundLength >= 40 && summary.avgRoundLength <= 70)} rounds average 40-70 s`,

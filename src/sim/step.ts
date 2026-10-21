@@ -5,6 +5,7 @@
 // reads nothing outside its arguments.
 
 import { CONFIG, type Config } from '../config';
+import { configFor, MODIFIERS, pickModifier } from './modifiers';
 import { buildArena, ghostArena, hasLineOfSight, moveCircle, resolveCircle } from './arena';
 import {
   aimLeadFor,
@@ -27,6 +28,8 @@ export function createGame(map: MapData, seed: number, cfg: Config = CONFIG): Ga
   const arena = buildArena(map, cfg);
   const state: GameState = {
     cfg,
+    baseCfg: cfg,
+    modifier: null,
     arena,
     tick: 0,
     phase: 'countdown',
@@ -72,6 +75,8 @@ export function spawnFor(state: GameState, player: PlayerIndex): Vec2 {
 }
 
 function startRound(state: GameState): void {
+  state.modifier = pickModifier(state);
+  state.cfg = configFor(state.baseCfg, state.modifier);
   state.phase = 'countdown';
   state.phaseTime = 0;
   state.roundTime = 0;
@@ -89,9 +94,10 @@ function startRound(state: GameState): void {
     p.dash = null;
     p.lastMove = { x: 0, y: 0 };
     p.effects = noEffects(); // round-long upgrades reset each round
+    if (state.modifier) Object.assign(p.effects, MODIFIERS[state.modifier].effects);
   }
   updateFacing(state);
-  state.events.push({ type: 'roundStart', round: state.roundIndex });
+  state.events.push({ type: 'roundStart', round: state.roundIndex, modifier: state.modifier });
 }
 
 export function suddenDeathMultiplier(state: GameState): number {

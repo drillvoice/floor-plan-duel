@@ -7,7 +7,7 @@ import { THE_FLAT } from './maps/theFlat';
 import { Sound } from './render/audio';
 import { cycleLook, loadLooks, saveLooks } from './render/looks';
 import { Music } from './render/music';
-import { Renderer } from './render/renderer';
+import { modifierReel, Renderer } from './render/renderer';
 import { Editor } from './screens/editor';
 import { HotseatLobby } from './screens/hotseat';
 import { createGame, step } from './sim/step';
@@ -76,6 +76,23 @@ function cycleSlot(i: 0 | 1): void {
   }
 }
 
+// Round modifiers on or off, from R on the title screen. On unless turned off.
+const MODIFIERS_KEY = 'fpd.modifiers';
+let modifiersOn = true;
+try {
+  modifiersOn = localStorage.getItem(MODIFIERS_KEY) !== 'off';
+} catch {
+  // Storage unavailable: keep the default.
+}
+function toggleModifiers(): void {
+  modifiersOn = !modifiersOn;
+  try {
+    localStorage.setItem(MODIFIERS_KEY, modifiersOn ? 'on' : 'off');
+  } catch {
+    // Not saved; the choice still applies this session.
+  }
+}
+
 const looks = loadLooks();
 renderer.looks = looks;
 
@@ -132,11 +149,11 @@ interface HotseatMatch {
 function startMatch(map: MapData, from: MatchFrom = 'title', hotseat?: HotseatMatch): void {
   // The seed is picked here, outside the sim; the sim itself never reads the clock.
   const seed = (Date.now() ^ (performance.now() * 1000)) >>> 0;
-  let cfg = CONFIG;
+  let cfg = { ...CONFIG, modifiers: { ...CONFIG.modifiers, enabled: modifiersOn } };
   if (hotseat) {
     // Hotseat is always two people on the keyboard, with their own names and looks.
     inputs = [new KeyboardPlayer(keyboard, KEY_BINDINGS.p1), new KeyboardPlayer(keyboard, KEY_BINDINGS.p2)];
-    cfg = { ...CONFIG, round: { ...CONFIG.round, roundsToWin: hotseat.roundsToWin } };
+    cfg = { ...cfg, round: { ...cfg.round, roundsToWin: hotseat.roundsToWin } };
     renderer.looks = hotseat.looks;
     renderer.names = hotseat.names;
     renderer.matchOverHint = 'Enter or Esc: back to the hotseat line-up';
@@ -183,6 +200,7 @@ keyboard.onPress((code) => {
       looks[i] = cycleLook(looks[i], 1);
       saveLooks(looks);
     } else if (code === 'KeyH') openLobby();
+    else if (code === 'KeyR') toggleModifiers();
     else if (code === 'Tab') mapIndex = (mapIndex + 1) % availableMaps().length;
     else if (code === 'KeyE') {
       const map = selectedMap();
@@ -227,6 +245,7 @@ const HITSTOP = 0.05;
 const BLOCKSTOP = 0.035;
 let hitstop = 0;
 let lastSecondShown = 0;
+let lastReelStep = -1;
 let accumulator = 0;
 let last = performance.now();
 
@@ -237,7 +256,7 @@ function frame(now: number): void {
 
   if (screen.kind === 'title') {
     accumulator = 0;
-    renderer.drawTitle((code) => keyboard.isHeld(code), slots, selectedMap().name, availableMaps().length);
+    renderer.drawTitle((code) => keyboard.isHeld(code), slots, selectedMap().name, availableMaps().length, modifiersOn);
   } else if (screen.kind === 'editor') {
     accumulator = 0;
     editor.draw();
@@ -269,6 +288,13 @@ function frame(now: number): void {
       renderer.update(slowmo > 0 ? elapsed * 0.35 : elapsed);
       // Tick through the last ten seconds of a round.
       const s = match.state;
+      // Click as the modifier reel spins, and ding when it lands.
+      const reel = s.phase === 'countdown' && s.modifier ? modifierReel(s.phaseTime) : null;
+      if (reel && reel.step !== lastReelStep) {
+        if (reel.landed) sound.reelLand();
+        else sound.reelTick();
+      }
+      lastReelStep = reel ? reel.step : -1;
       const secondsLeft = Math.ceil(s.cfg.round.timeLimit - s.roundTime);
       if (s.phase === 'playing' && secondsLeft !== lastSecondShown && secondsLeft > 0 && secondsLeft <= 10) sound.tick(secondsLeft);
       lastSecondShown = secondsLeft;

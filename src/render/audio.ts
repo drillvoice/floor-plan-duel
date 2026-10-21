@@ -86,6 +86,15 @@ export class Sound {
     }
   }
 
+  // The round-modifier reel: a click per name, then a ding as it lands.
+  reelTick(): void {
+    this.tone(1600, 0.03, 'square', 0.05, 0.8);
+  }
+
+  reelLand(): void {
+    [784, 1175, 1568].forEach((f, n) => this.tone(f, 0.25, 'triangle', 0.14, 1, n * 0.05));
+  }
+
   // Countdown tick for the last seconds of a round; higher when it's closer.
   tick(secondsLeft: number): void {
     this.tone(secondsLeft <= 3 ? 1320 : 990, 0.07, 'square', 0.07, 1);

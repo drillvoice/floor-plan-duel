@@ -3,7 +3,8 @@
 import { KEY_BINDINGS, type PlayerKeys } from '../config';
 import { fireCooldownFor, hitRadiusFor, maxDodgeCharges, ON_OPPONENT, STACKING } from '../sim/powerups';
 import { dodgeDirection, suddenDeathMultiplier } from '../sim/step';
-import { POWER_UP_KINDS } from '../config';
+import { MODIFIER_IDS, POWER_UP_KINDS } from '../config';
+import { MODIFIERS } from '../sim/modifiers';
 import { POWER_UP_CATEGORY, type GameEvent, type GameState, type PlayerIndex, type PowerUp, type PowerUpKind } from '../sim/types';
 import { CATEGORY_COLORS, drawPowerUpGlyph, powerUpColor } from './icons';
 import { drawLook } from './looks';
@@ -95,6 +96,26 @@ const HUD_NAMES: Record<PowerUpKind, string> = {
   topsyTurvy: 'Flipped',
   bigTarget: 'Big target',
 };
+
+// The round-modifier reel spins through names, slowing down, and lands on
+// the round's modifier. These are the times (s into the countdown) at which
+// it moves on to the next name; the last one is where it lands.
+const REEL_STEPS: number[] = (() => {
+  const times: number[] = [];
+  let t = 0;
+  for (let gap = 0.05; t < 1.3; gap *= 1.17) times.push((t += gap));
+  return times;
+})();
+
+// Where the reel is `t` seconds into the countdown: how many names it has
+// moved through, and whether it has landed.
+export function modifierReel(t: number): { step: number; landed: boolean } {
+  let step = 0;
+  while (step < REEL_STEPS.length && t >= REEL_STEPS[step]) step++;
+  return { step, landed: step === REEL_STEPS.length };
+}
+
+const MODIFIER_COLOR = '#ffd23f';
 
 interface Trail {
   from: Vec2;
@@ -625,7 +646,13 @@ export class Renderer {
     ctx.fillText(label, this.width / 2, 24);
     ctx.font = '500 13px system-ui, sans-serif';
     ctx.fillStyle = COLORS.muted;
-    ctx.fillText(`Round ${state.roundIndex + 1}`, this.width / 2, 50);
+    if (state.modifier && state.phase !== 'countdown') {
+      ctx.fillStyle = MODIFIER_COLOR;
+      ctx.font = '700 13px system-ui, sans-serif';
+      ctx.fillText(`Round ${state.roundIndex + 1} · ${MODIFIERS[state.modifier].name}`, this.width / 2, 50);
+    } else {
+      ctx.fillText(`Round ${state.roundIndex + 1}`, this.width / 2, 50);
+    }
   }
 
   // One player's status in the column beside the arena, sized to read at a
@@ -730,7 +757,7 @@ export class Renderer {
       ctx.textAlign = left ? 'left' : 'right';
       ctx.fillStyle = COLORS.text;
       ctx.font = `800 ${20 * u}px system-ui, sans-serif`;
-      ctx.fillText(STACKING.has(kind) ? `×${amount}` : `${Math.ceil(amount)}s`, textX, iy - 7 * u);
+      ctx.fillText(STACKING.has(kind) ? `×${amount}` : Number.isFinite(amount) ? `${Math.ceil(amount)}s` : '∞', textX, iy - 7 * u);
       ctx.fillStyle = COLORS.muted;
       ctx.font = `500 ${12 * u}px system-ui, sans-serif`;
       ctx.fillText(HUD_NAMES[kind], textX, iy + 11 * u);
@@ -748,6 +775,9 @@ export class Renderer {
     if (paused) {
       title = 'Paused';
       sub = 'Esc to resume · Q to quit to title';
+    } else if (state.phase === 'countdown' && state.modifier) {
+      this.drawModifierReel(state);
+      return;
     } else if (state.phase === 'countdown') {
       title = `Round ${state.roundIndex + 1}`;
       sub = 'Get ready';
@@ -780,6 +810,64 @@ export class Renderer {
     }
   }
 
+  // Countdown with a modifier: a slot-machine reel of modifier names that
+  // slows down and lands on this round's, then says what it does.
+  private drawModifierReel(state: GameState): void {
+    const ctx = this.ctx;
+    const id = state.modifier!;
+    const { step, landed } = modifierReel(state.phaseTime);
+    // Count back from the landing so the last name shown is the real one.
+    const order = MODIFIER_IDS;
+    const at = order.indexOf(id) - (REEL_STEPS.length - step);
+    const shown = order[((at % order.length) + order.length) % order.length];
+    const cx = this.width / 2;
+    const cy = this.height / 2;
+    ctx.fillStyle = 'rgba(10,11,15,0.6)';
+    ctx.fillRect(0, 0, this.width, this.height);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = COLORS.text;
+    ctx.font = '800 28px system-ui, sans-serif';
+    ctx.fillText(`Round ${state.roundIndex + 1}`, cx, cy - 110);
+
+    // The reel window.
+    const w = Math.min(560, this.width - 40);
+    const h = 96;
+    ctx.save();
+    ctx.fillStyle = 'rgba(255,255,255,0.06)';
+    ctx.strokeStyle = landed ? MODIFIER_COLOR : 'rgba(255,255,255,0.3)';
+    ctx.lineWidth = landed ? 4 : 2;
+    ctx.beginPath();
+    ctx.roundRect(cx - w / 2, cy - h / 2 - 10, w, h, 14);
+    ctx.fill();
+    ctx.stroke();
+    ctx.clip();
+    // Between steps each name drifts up through the window and fades; once
+    // landed it pops.
+    const prev = step === 0 ? 0 : REEL_STEPS[step - 1];
+    const next = REEL_STEPS[step] ?? prev;
+    const slide = landed ? 0.5 : (state.phaseTime - prev) / Math.max(0.001, next - prev);
+    const sinceLand = state.phaseTime - REEL_STEPS[REEL_STEPS.length - 1];
+    const pop = landed ? 1 + 0.25 * Math.max(0, 1 - sinceLand / 0.2) : 1;
+    ctx.translate(cx, cy - 10 + (0.5 - slide) * h * 0.4);
+    ctx.scale(pop, pop);
+    ctx.globalAlpha = landed ? 1 : 1 - Math.abs(slide - 0.5);
+    ctx.fillStyle = landed ? MODIFIER_COLOR : COLORS.text;
+    ctx.font = '900 48px system-ui, sans-serif';
+    ctx.fillText(MODIFIERS[shown].name, 0, 0);
+    ctx.restore();
+
+    if (landed) {
+      const a = Math.min(1, sinceLand / 0.25);
+      ctx.fillStyle = hexAlpha(COLORS.text, a);
+      ctx.font = '600 22px system-ui, sans-serif';
+      ctx.fillText(MODIFIERS[id].blurb, cx, cy + 70);
+      ctx.fillStyle = hexAlpha(COLORS.muted, a);
+      ctx.font = '500 16px system-ui, sans-serif';
+      ctx.fillText('Get ready', cx, cy + 104);
+    }
+  }
+
   // Plain background behind HTML screens such as the hotseat lobby.
   drawBackdrop(): void {
     this.ctx.fillStyle = COLORS.background;
@@ -787,7 +875,13 @@ export class Renderer {
   }
 
   // Title screen with a live key test, so ghosting shows up before a match.
-  drawTitle(isHeld: (code: string) => boolean, slots: readonly string[], mapName: string, mapCount: number): void {
+  drawTitle(
+    isHeld: (code: string) => boolean,
+    slots: readonly string[],
+    mapName: string,
+    mapCount: number,
+    modifiers: boolean,
+  ): void {
     const ctx = this.ctx;
     ctx.fillStyle = COLORS.background;
     ctx.fillRect(0, 0, this.width, this.height);
@@ -820,6 +914,9 @@ export class Renderer {
       cx,
       head + 114,
     );
+    ctx.fillStyle = modifiers ? MODIFIER_COLOR : COLORS.muted;
+    ctx.font = '600 13px system-ui, sans-serif';
+    ctx.fillText(`Round modifiers: ${modifiers ? 'ON' : 'OFF'}  (R to change)`, cx, head + 138);
 
     const colW = Math.min(360, w / 2 - 20);
     this.drawKeyPanel(KEY_BINDINGS.p1, 0, cx - colW / 2 - 10, top, isHeld, slots[0]);

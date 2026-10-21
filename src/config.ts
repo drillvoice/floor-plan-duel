@@ -22,6 +22,21 @@ export const POWER_UP_KINDS = [
 
 export type PowerUpKind = (typeof POWER_UP_KINDS)[number];
 
+// One-round rules (see sim/modifiers.ts for what each does).
+export const MODIFIER_IDS = [
+  'giantBullets',
+  'powerUpStorm',
+  'oneHitWonder',
+  'speedDemons',
+  'bulletHell',
+  'sniperDuel',
+  'bouncyCastle',
+  'ghostTown',
+  'dodgeFrenzy',
+] as const;
+
+export type ModifierId = (typeof MODIFIER_IDS)[number];
+
 export const CONFIG = {
   tickRate: 60,
 
@@ -109,6 +124,16 @@ export const CONFIG = {
     topsyTurvy: { duration: 3 },
     // Opponent is easier to hit; walls still treat them as normal size.
     bigTarget: { sizeMultiplier: 1.5, duration: 5 },
+  },
+
+  // Round modifiers: before each round a spin picks a one-round rule. Off by
+  // default here; the title screen turns them on (R).
+  modifiers: {
+    enabled: false,
+    // A longer countdown so there's time to read the spin.
+    countdown: 3,
+    // Modifiers that can be picked, with equal chance.
+    pool: [...MODIFIER_IDS] as ModifierId[],
   },
 
   bot: {

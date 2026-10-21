@@ -6,6 +6,7 @@ import { lastEditedMap, listSavedMaps } from './maps/storage';
 import { THE_FLAT } from './maps/theFlat';
 import { Sound } from './render/audio';
 import { cycleLook, loadLooks, saveLooks } from './render/looks';
+import { Music } from './render/music';
 import { Renderer } from './render/renderer';
 import { Editor } from './screens/editor';
 import { createGame, step } from './sim/step';
@@ -20,6 +21,7 @@ const canvas = document.getElementById('game') as HTMLCanvasElement;
 const renderer = new Renderer(canvas);
 const keyboard = new Keyboard();
 const sound = new Sound();
+const music = new Music(sound);
 
 // Each slot is a human on the keyboard or a bot at some difficulty.
 type Slot = 'human' | Difficulty;
@@ -92,9 +94,11 @@ function startMatch(map: MapData, from: 'title' | 'editor' = 'title'): void {
   inputs = makeInputs(seed);
   screen = { kind: 'match', state: createGame(map, seed), map, paused: false, from };
   keyboard.clear();
+  music.start();
 }
 
 function leaveMatch(match: Extract<Screen, { kind: 'match' }>): void {
+  music.stop();
   if (match.from === 'editor') openEditor(editor.currentMap());
   else screen = { kind: 'title' };
 }
@@ -103,6 +107,11 @@ keyboard.onPress((code) => {
   sound.unlock();
   if (code === 'KeyM') {
     sound.toggleMute();
+    return;
+  }
+  if (code === 'KeyN') {
+    music.toggle();
+    if (music.enabled && screen.kind === 'match' && screen.state.phase !== 'matchOver') music.start();
     return;
   }
   if (screen.kind === 'editor') return; // the editor handles its own keys
@@ -166,6 +175,7 @@ function frame(now: number): void {
     editor.draw();
   } else {
     const match = screen;
+    music.setPaused(match.paused);
     if (!match.paused) {
       accumulator += slowmo > 0 ? elapsed * SLOWMO_SCALE : elapsed;
       slowmo = Math.max(0, slowmo - elapsed);
@@ -183,6 +193,12 @@ function frame(now: number): void {
       const secondsLeft = Math.ceil(s.cfg.round.timeLimit - s.roundTime);
       if (s.phase === 'playing' && secondsLeft !== lastSecondShown && secondsLeft > 0 && secondsLeft <= 10) sound.tick(secondsLeft);
       lastSecondShown = secondsLeft;
+      if (s.phase === 'matchOver') music.stop();
+      else {
+        const over = s.roundTime - s.cfg.round.timeLimit;
+        const suddenSteps = over < 0 ? 0 : 1 + Math.floor(over / s.cfg.round.suddenDeathInterval);
+        music.setTension(s.roundTime / s.cfg.round.timeLimit, suddenSteps);
+      }
     } else {
       accumulator = 0;
     }

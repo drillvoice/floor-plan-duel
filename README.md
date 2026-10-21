@@ -24,7 +24,7 @@ On the title screen:
 - **1 / 2** switch each player between Human and Bot (Easy, Normal, Hard). Two bots will play each other.
 - Each player's **dodge key** cycles their look: a plain circle or a cute icon inside it.
 - **Tab** changes the map; **E** opens the map editor (on a saved map, or the one you edited last).
-- **M** mutes sound.
+- **M** mutes all sound; **N** turns the music on or off (also works mid-match). The music speeds up as the round goes on and gets busier near the end.
 - The key caps light up while held: use this to check your keyboard can register everyone's keys at once.
 
 | Action | Player 1 | Player 2 |

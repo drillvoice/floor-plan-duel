@@ -24,6 +24,11 @@ export class Sound {
     for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
   }
 
+  // The audio graph, once unlocked, for other players such as the music.
+  output(): { ctx: AudioContext; master: GainNode; noise: AudioBuffer } | null {
+    return this.ctx && this.master && this.noise ? { ctx: this.ctx, master: this.master, noise: this.noise } : null;
+  }
+
   toggleMute(): void {
     this.muted = !this.muted;
     if (this.master) this.master.gain.value = this.muted ? 0 : 0.5;

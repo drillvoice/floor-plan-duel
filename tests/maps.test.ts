@@ -10,7 +10,15 @@ describe('map validation', () => {
   });
 
   it('rejects spawns that cannot reach each other', () => {
-    const sealed: MapData = { ...THE_FLAT, walls: [...THE_FLAT.walls, { a: { x: 7, y: 12.5 }, b: { x: 9.5, y: 12.5 } }, { a: { x: 14.5, y: 12.5 }, b: { x: 17, y: 12.5 } }] };
+    const sealed: MapData = {
+      ...THE_FLAT,
+      walls: [
+        ...THE_FLAT.walls,
+        { a: { x: 7, y: 12.5 }, b: { x: 9.5, y: 12.5 } },
+        { a: { x: 14.5, y: 12.5 }, b: { x: 17, y: 12.5 } },
+        { a: { x: 12, y: 2 }, b: { x: 12, y: 4.5 } },
+      ],
+    };
     expect(validateMap(sealed)).toContain("The spawns can't reach each other.");
   });
 

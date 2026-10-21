@@ -61,7 +61,7 @@ Power-ups appear at random spots, linger for a random time, and are either round
 
 **Spawning**
 
-- A new power-up every 4–9 s (random), at most 3 on the map at once.
+- A new power-up every 3–6 s (random), at most 3 on the map at once.
 - Location: any open floor cell at least 1.5 units from walls and players. No bias toward either player in the MVP.
 - Lifespan, picked per spawn: 1 s (20%), 3 s (20%), 10 s (35%), 30 s (25%).
 - **Telegraph:** a shimmering ring shows the spot 0.75 s before the item appears.

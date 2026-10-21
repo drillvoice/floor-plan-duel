@@ -55,7 +55,7 @@ describe('walkable grid', () => {
 });
 
 describe('spawning', () => {
-  it('spawns every 4-9 s, at most 3 at once, in valid spots', () => {
+  it('spawns at the configured interval, at most 3 at once, in valid spots', () => {
     const cfg = cfgWith(['shield'], { lifespans: [{ seconds: 30, weight: 1 }] });
     const s = playing(cfg, THE_FLAT);
     const spawnTimes: number[] = [];
@@ -64,8 +64,8 @@ describe('spawning', () => {
       for (const e of s.events) if (e.type === 'powerUpTelegraph') spawnTimes.push(s.roundTime);
       expect(s.powerUps.length).toBeLessThanOrEqual(3);
     }
-    expect(spawnTimes[0]).toBeGreaterThanOrEqual(4 - 1e-6);
-    expect(spawnTimes[0]).toBeLessThanOrEqual(9 + 1e-6);
+    expect(spawnTimes[0]).toBeGreaterThanOrEqual(CONFIG.powerUps.spawnIntervalMin - 1e-6);
+    expect(spawnTimes[0]).toBeLessThanOrEqual(CONFIG.powerUps.spawnIntervalMax + 1e-6);
     expect(spawnTimes.length).toBeGreaterThanOrEqual(3);
     for (const pu of s.powerUps) {
       expect(s.arena.grid.clearance[cellIndex(s.arena.grid, pu.pos)]).toBeGreaterThanOrEqual(1.5);

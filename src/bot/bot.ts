@@ -5,6 +5,7 @@
 import type { InputSource } from '../input/types';
 import { moveCircle } from '../sim/arena';
 import { moveSpeedFor } from '../sim/powerups';
+import { dodgeDirection } from '../sim/step';
 import { nextRandom, randomRange } from '../sim/rng';
 import type { Bullet, GameState, PlayerIndex, PlayerInput } from '../sim/types';
 import { dist, distSegmentSegment, dot, leftOf, len, normalize, rightOf, scale, sub, add, type Vec2 } from '../sim/vec';
@@ -108,11 +109,11 @@ export class BotPlayer implements InputSource {
     input.move = side;
 
     if (self.dash || self.dodgeCooldown > 0) return;
-    // Try both dodges (they're relative to facing) and take the one that ends
-    // furthest off the bullet's line, as long as it actually gets clear.
+    // Try both dodges and take the one that ends furthest off the bullet's
+    // line, as long as it actually gets clear.
     const options = [
-      { left: true, dir: leftOf(self.facing) },
-      { left: false, dir: rightOf(self.facing) },
+      { left: true, dir: dodgeDirection(cfg, self, 'left') },
+      { left: false, dir: dodgeDirection(cfg, self, 'right') },
     ].map((o) => {
       const end = { ...self.pos };
       moveCircle(end, scale(o.dir, cfg.dodge.distance), cfg.player.radius, state.arena, cfg);

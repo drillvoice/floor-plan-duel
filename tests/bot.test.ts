@@ -19,11 +19,12 @@ function playing(cfg: Config = QUIET): GameState {
 }
 
 describe('pathfinding', () => {
-  it('finds a path between the rooms through the hallway, clear of walls', () => {
+  it('finds a path between the rooms, clear of walls', () => {
     const s = playing();
     const path = findPath(s.arena.grid, THE_FLAT.spawns[0], THE_FLAT.spawns[1])!;
     expect(path).not.toBeNull();
-    expect(path.some((p) => p.y > 12.5)).toBe(true); // goes via the hallway
+    // The shortest route is the doorway near the top of the dividing wall.
+    expect(path.some((p) => Math.abs(p.x - 12) < 0.5 && p.y > 2 && p.y < 4.5)).toBe(true);
     for (const p of path.slice(0, -1)) {
       for (const w of s.arena.walls) {
         expect(distPointSegment(p, w.a, w.b)).toBeGreaterThanOrEqual(CONFIG.player.radius + CONFIG.map.wallThickness / 2 - 1e-6);
@@ -39,10 +40,10 @@ describe('bot', () => {
       bot: { ...QUIET.bot, difficulty: { ...QUIET.bot.difficulty, hard: { reactionDelay: 0.08, missChance } } },
     };
     const s = playing(cfg);
-    placePlayer(s, 0, { x: 3, y: 14.25 });
-    placePlayer(s, 1, { x: 8, y: 14.25 });
-    // A bullet already in flight, aimed straight at the bot.
-    s.bullets.push({ id: 77, owner: 0, pos: { x: 6, y: 14.25 }, vel: { x: 8, y: 0 }, age: 0.1, lifetime: 1, radius: 0.15 });
+    placePlayer(s, 0, { x: 4, y: 2 });
+    placePlayer(s, 1, { x: 4, y: 7 });
+    // A bullet already in flight, coming straight down at the bot.
+    s.bullets.push({ id: 77, owner: 0, pos: { x: 4, y: 5 }, vel: { x: 0, y: 8 }, age: 0.1, lifetime: 1, radius: 0.15 });
     return new BotPlayer('hard', 3).sample(s, 1);
   }
 
@@ -50,7 +51,7 @@ describe('bot', () => {
     const input = incomingShot(0);
     expect(input.dodgeLeft || input.dodgeRight).toBe(true);
     // And walks off the bullet's line too.
-    expect(Math.abs(input.move.y)).toBeGreaterThan(0.5);
+    expect(Math.abs(input.move.x)).toBeGreaterThan(0.5);
   });
 
   it('sometimes misses the dodge, per difficulty', () => {

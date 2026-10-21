@@ -136,8 +136,8 @@ function updatePlayer(state: GameState, i: PlayerIndex, input: PlayerInput, dt: 
   p.dodgeCooldown = Math.max(0, p.dodgeCooldown - dt);
 
   if (!p.dash && p.dodgeCooldown <= EPS && (input.dodgeLeft || input.dodgeRight)) {
-    // Dodge sideways relative to facing; if both are pressed, left wins.
-    const dir = input.dodgeLeft ? leftOf(p.facing) : rightOf(p.facing);
+    // If both are pressed, left wins.
+    const dir = dodgeDirection(cfg, p, input.dodgeLeft ? 'left' : 'right');
     p.dash = { dir, remaining: cfg.dodge.duration };
     p.dodgeCooldown = cfg.dodge.cooldown;
     state.events.push({ type: 'dodge', player: i, from: { ...p.pos }, dir });
@@ -160,6 +160,11 @@ function updatePlayer(state: GameState, i: PlayerIndex, input: PlayerInput, dt: 
   if (l > 1) move = scale(move, 1 / l); // diagonals aren't faster
   moveCircle(p.pos, scale(move, moveSpeedFor(p.effects, state) * dt), cfg.player.radius, state.arena, cfg);
   p.vel = scale(sub(p.pos, before), 1 / dt);
+}
+
+export function dodgeDirection(cfg: Config, p: PlayerState, side: 'left' | 'right'): Vec2 {
+  if (cfg.dodge.relativeTo === 'facing') return side === 'left' ? leftOf(p.facing) : rightOf(p.facing);
+  return { x: side === 'left' ? -1 : 1, y: 0 };
 }
 
 function updateFacing(state: GameState): void {

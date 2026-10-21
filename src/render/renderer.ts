@@ -2,10 +2,10 @@
 
 import { KEY_BINDINGS, type PlayerKeys } from '../config';
 import { fireCooldownFor } from '../sim/powerups';
-import { suddenDeathMultiplier } from '../sim/step';
+import { dodgeDirection, suddenDeathMultiplier } from '../sim/step';
 import { POWER_UP_CATEGORY, type GameEvent, type GameState, type PlayerIndex, type PowerUp, type PowerUpKind } from '../sim/types';
 import { CATEGORY_COLORS, drawPowerUpGlyph, powerUpColor } from './icons';
-import { add, leftOf, rightOf, scale, type Vec2 } from '../sim/vec';
+import { add, scale, type Vec2 } from '../sim/vec';
 
 export const COLORS = {
   background: '#16181f',
@@ -281,7 +281,7 @@ export class Renderer {
 
     // Dodge direction hints, dim while on cooldown.
     const ready = p.dodgeCooldown <= 0;
-    for (const side of [leftOf(p.facing), rightOf(p.facing)]) {
+    for (const side of [dodgeDirection(cfg, p, 'left'), dodgeDirection(cfg, p, 'right')]) {
       const tip = this.toScreen(add(p.pos, scale(side, cfg.player.radius + 0.45)));
       const base = this.toScreen(add(p.pos, scale(side, cfg.player.radius + 0.2)));
       ctx.strokeStyle = hexAlpha(color, ready ? 0.8 : 0.2);

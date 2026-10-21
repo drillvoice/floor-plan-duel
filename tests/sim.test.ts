@@ -79,7 +79,28 @@ describe('movement', () => {
 });
 
 describe('dodging', () => {
-  it('dashes the dodge distance to the left of facing', () => {
+  it('dodges west and east whichever way the player faces', () => {
+    const s = playing();
+    placePlayer(s, 0, { x: 18, y: 10 });
+    placePlayer(s, 1, { x: 22, y: 14 });
+    run(s, 1, input({ dodgeLeft: true }));
+    run(s, 20);
+    expect(s.players[0].pos.x).toBeCloseTo(18 - CONFIG.dodge.distance, 2);
+    expect(s.players[0].pos.y).toBeCloseTo(10, 2);
+  });
+
+  it('can dodge relative to facing instead', () => {
+    const cfg: Config = { ...CONFIG, dodge: { ...CONFIG.dodge, relativeTo: 'facing' } };
+    const s = playing(BOX, cfg);
+    // Opponent due east, so "left" of facing is north.
+    placePlayer(s, 0, { x: 4, y: 12 });
+    placePlayer(s, 1, { x: 20, y: 12 });
+    run(s, 1, input({ dodgeLeft: true }));
+    run(s, 20);
+    expect(s.players[0].pos.y).toBeCloseTo(12 - CONFIG.dodge.distance, 2);
+  });
+
+  it('dashes the dodge distance to the left', () => {
     const s = playing();
     // Player 0 at the bottom, opponent straight north: left is west.
     placePlayer(s, 0, { x: 18, y: 14 });
@@ -90,7 +111,7 @@ describe('dodging', () => {
     expect(s.players[0].pos.y).toBeCloseTo(14, 2);
   });
 
-  it('dashes to the right of facing', () => {
+  it('dashes to the right', () => {
     const s = playing();
     placePlayer(s, 0, { x: 18, y: 14 });
     placePlayer(s, 1, { x: 18, y: 4 });
@@ -126,8 +147,8 @@ describe('dodging', () => {
     const s = playing();
     placePlayer(s, 0, { x: 11, y: 4 });
     placePlayer(s, 1, { x: 11, y: 14 });
-    // Facing south, so left is east: into the wall at x = 12.
-    run(s, 1, input({ dodgeLeft: true }));
+    // Dodging right goes east: into the wall at x = 12.
+    run(s, 1, input({ dodgeRight: true }));
     run(s, 3);
     expect(s.players[0].dash).toBeNull();
     expect(s.players[0].pos.x).toBeCloseTo(12 - CONFIG.map.wallThickness / 2 - CONFIG.player.radius, 3);

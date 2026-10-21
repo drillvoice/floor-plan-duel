@@ -31,6 +31,9 @@ export const CONFIG = {
     duration: 0.15,
     // Shared by both directions.
     cooldown: 1.2,
+    // 'screen': dodge left/right dashes west/east, like movement.
+    // 'facing': sideways relative to the line to the opponent.
+    relativeTo: 'screen' as 'screen' | 'facing',
   },
 
   round: {
@@ -46,8 +49,8 @@ export const CONFIG = {
   },
 
   powerUps: {
-    spawnIntervalMin: 4,
-    spawnIntervalMax: 9,
+    spawnIntervalMin: 3,
+    spawnIntervalMax: 6,
     maxOnMap: 3,
     // Spawn spots must be this far from walls and from players.
     minWallDistance: 1.5,

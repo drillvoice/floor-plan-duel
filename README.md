@@ -1,17 +1,30 @@
 # Floor Plan Duel
 
-A top-down 1v1 shooter for two people sharing one laptop keyboard. Shots auto-aim at the opponent but travel slowly, so the game is about moving and dodging. See [DESIGN.md](DESIGN.md) for the full design.
+A top-down 1v1 shooter for two people sharing one laptop keyboard. Shots auto-aim at the opponent but travel slowly, so the game is about moving and dodging. Power-ups appear at random to swing rounds. See [DESIGN.md](DESIGN.md) for the full design.
 
 ## Run
+
+Needs Node.js 22 or newer.
 
 ```sh
 npm install
 npm run dev      # play at http://localhost:5173
-npm test         # simulation tests
-npm run build    # static build in dist/
+npm test         # simulation, power-up, bot and map tests
+npm run build    # static site in dist/ (works from any folder, e.g. GitHub Pages)
+npm run preview  # serve the build locally
 ```
 
-## Controls
+The built site works offline after the first visit and can be installed as an app from the browser.
+
+## Play
+
+On the title screen:
+
+- **Enter** starts a match, best of 5 rounds, 3 hits to lose a round.
+- **1 / 2** switch each player between Human and Bot (Easy, Normal, Hard). Two bots will play each other.
+- **Tab** changes the map; **E** opens the map editor.
+- **M** mutes sound.
+- The key caps light up while held: use this to check your keyboard can register everyone's keys at once.
 
 | Action | Player 1 | Player 2 |
 | --- | --- | --- |
@@ -20,8 +33,47 @@ npm run build    # static build in dist/
 | Shoot (hold) | G | . (full stop) |
 | Dodge right | H | / (slash) |
 | Pause | Esc | Esc |
-| Mute sound | M | M |
 
-Dodges are sideways relative to the way you face, and you always face your opponent. The title screen doubles as a key test: hold the keys you'd press together and check they all light up.
+Dodges are a quick sideways dash, left or right of the way you face; you always face your opponent. A dodge has a 1.2 s cooldown (the little ticks beside your player dim while it recharges). After 90 s a round goes to sudden death and bullets speed up every 5 s.
 
-All tunable numbers are in `src/config.ts`.
+Power-ups flash a ring where they're about to appear, and a ring around each one shrinks as it expires:
+
+- **Gold** (lasts the round, stacks to 3): Swift Shot (faster bullets), Trigger Happy (faster firing).
+- **Blue** (temporary): Shield (absorbs the next hit, up to 10 s).
+- **Red** (curse on your opponent): Molasses (opponent moves 40% slower for 4 s).
+
+## Map editor
+
+Press **E** on the title screen.
+
+- Drag to draw a wall. Ends snap to a half-unit grid and to existing wall ends; hold Shift for straight lines.
+- Click a wall to select it, Delete or Backspace to remove it. Ctrl+Z / Ctrl+Shift+Z undo and redo.
+- Drag the 1 and 2 markers to move the spawns, or use **Auto spawns** to place them as far apart as possible.
+- **Save** keeps the map in this browser; it then appears on the title screen (Tab). **Export** / **Import** move maps around as `.json` files.
+- **Test play** (or T) starts a match on the map; leaving the match brings you back to the editor.
+
+The status line at the bottom warns if a spawn overlaps a wall or the spawns can't reach each other.
+
+## Balancing with the simulator
+
+```sh
+npm run sim -- --matches 500 --difficulty normal --seed 1
+```
+
+Runs bot-vs-bot matches headlessly, much faster than real time, and prints win rates by slot and spawn, round length, hits, shots and dodges per round, and how often each power-up's picker goes on to win the round, checked against the targets in DESIGN.md.
+
+- `--p1 hard --p2 easy` sets each bot separately.
+- `--set path=value` tries a config change without editing any files, and can be repeated: `--set round.hitsToLose=5 --set fire.cooldown=0.9`.
+- `--json` prints machine-readable output.
+
+All tunable numbers live in `src/config.ts`.
+
+## Code layout
+
+- `src/sim/`: the game rules. A pure fixed 60 Hz `step(state, inputs)` with a seeded RNG and no DOM or clock, so a match is reproducible from its seed and inputs.
+- `src/input/`: keyboard input. `src/bot/`: the bot and A* pathfinding. Both produce the same `{ move, dodgeLeft, dodgeRight, shoot }` input.
+- `src/render/`: canvas drawing, effects and synthesised sound. Never changes game state.
+- `src/screens/editor.ts`, `src/maps/`: the editor, the built-in map, validation and storage.
+- `scripts/sim.ts`: the headless simulator.
+
+For tuning in the browser, `fpd.state` in the developer console is the live match state.

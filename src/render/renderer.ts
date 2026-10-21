@@ -18,6 +18,8 @@ export const COLORS = {
 };
 
 const PLAYER_NAMES = ['P1', 'P2'] as const;
+const TIMER_AMBER = '#ffb020';
+const TIMER_RED = '#ff4d4d';
 const HUD_HEIGHT = 64;
 const MARGIN = 24;
 
@@ -56,6 +58,7 @@ export class Renderer {
   private rings: Ring[] = [];
   private shake = 0;
   private screenFlash = 0;
+  private suddenDeathBanner = 0;
 
   constructor(private canvas: HTMLCanvasElement) {
     this.ctx = canvas.getContext('2d')!;
@@ -99,6 +102,9 @@ export class Renderer {
         case 'pickup':
           this.rings.push({ pos: e.pos, age: 0, color: powerUpColor(e.kind) });
           break;
+        case 'suddenDeath':
+          this.suddenDeathBanner = 2;
+          break;
         case 'roundStart':
           this.trails = [];
           this.particles = [];
@@ -128,6 +134,7 @@ export class Renderer {
     this.rings = this.rings.filter((r) => r.age < 0.4);
     this.shake = Math.max(0, this.shake - dt * 2.5);
     this.screenFlash = Math.max(0, this.screenFlash - dt);
+    this.suddenDeathBanner = Math.max(0, this.suddenDeathBanner - dt);
   }
 
   // Visual-only randomness is fine here: the renderer never touches game state.
@@ -183,6 +190,19 @@ export class Renderer {
       ctx.fillRect(0, 0, this.width, this.height);
     }
     this.drawHud(state);
+    if (this.suddenDeathBanner > 0 && state.phase === 'playing') {
+      const a = Math.min(1, this.suddenDeathBanner / 0.5);
+      ctx.fillStyle = `rgba(10,11,15,${0.6 * a})`;
+      ctx.fillRect(0, this.height / 2 - 60, this.width, 124);
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = hexAlpha(TIMER_RED, a);
+      ctx.font = '900 64px system-ui, sans-serif';
+      ctx.fillText('SUDDEN DEATH', this.width / 2, this.height / 2 - 10);
+      ctx.fillStyle = `rgba(242,239,232,${a})`;
+      ctx.font = '600 20px system-ui, sans-serif';
+      ctx.fillText('Bullets speed up every 5 seconds', this.width / 2, this.height / 2 + 36);
+    }
     this.drawOverlay(state, paused);
   }
 
@@ -452,13 +472,26 @@ export class Renderer {
       });
     }
 
-    const sudden = state.roundTime >= cfg.round.timeLimit;
+    // Round timer: a number, plus a bar across the top of the arena that
+    // shrinks and turns amber, then red, as time runs out.
+    const left = cfg.round.timeLimit - state.roundTime;
+    const sudden = left <= 0;
+    const pulse = 0.55 + 0.45 * Math.abs(Math.sin(state.tick * 0.12));
+    const timerColor = sudden || left <= 10 ? TIMER_RED : left <= 30 ? TIMER_AMBER : COLORS.text;
+    const barY = this.origin.y - 14;
+    const barW = state.arena.width * this.scale;
+    ctx.fillStyle = 'rgba(255,255,255,0.08)';
+    ctx.fillRect(this.origin.x, barY, barW, 6);
+    ctx.globalAlpha = sudden || left <= 10 ? pulse : 1;
+    ctx.fillStyle = timerColor;
+    const frac = sudden ? 1 : Math.max(0, left / cfg.round.timeLimit);
+    ctx.fillRect(this.origin.x + (barW * (1 - frac)) / 2, barY, barW * frac, 6);
+    ctx.globalAlpha = 1;
+
     ctx.textAlign = 'center';
-    ctx.fillStyle = sudden ? COLORS.players[0] : COLORS.text;
-    ctx.font = '700 26px system-ui, sans-serif';
-    const label = sudden
-      ? `SUDDEN DEATH ×${suddenDeathMultiplier(state).toFixed(2)}`
-      : String(Math.ceil(cfg.round.timeLimit - state.roundTime));
+    ctx.fillStyle = timerColor;
+    ctx.font = '800 30px system-ui, sans-serif';
+    const label = sudden ? `SUDDEN DEATH ×${suddenDeathMultiplier(state).toFixed(2)}` : `${Math.ceil(left)}`;
     ctx.fillText(label, this.width / 2, 24);
     ctx.font = '500 13px system-ui, sans-serif';
     ctx.fillStyle = COLORS.muted;

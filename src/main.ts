@@ -141,6 +141,7 @@ const TICK = 1 / 60;
 const SLOWMO_DURATION = 0.6;
 const SLOWMO_SCALE = 0.2;
 let slowmo = 0;
+let lastSecondShown = 0;
 let accumulator = 0;
 let last = performance.now();
 
@@ -168,6 +169,11 @@ function frame(now: number): void {
         if (s.events.some((e) => e.type === 'hit' && e.hits >= s.cfg.round.hitsToLose)) slowmo = SLOWMO_DURATION;
       }
       renderer.update(slowmo > 0 ? elapsed * 0.35 : elapsed);
+      // Tick through the last ten seconds of a round.
+      const s = match.state;
+      const secondsLeft = Math.ceil(s.cfg.round.timeLimit - s.roundTime);
+      if (s.phase === 'playing' && secondsLeft !== lastSecondShown && secondsLeft > 0 && secondsLeft <= 10) sound.tick(secondsLeft);
+      lastSecondShown = secondsLeft;
     } else {
       accumulator = 0;
     }

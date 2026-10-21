@@ -73,6 +73,11 @@ export class Sound {
     }
   }
 
+  // Countdown tick for the last seconds of a round; higher when it's closer.
+  tick(secondsLeft: number): void {
+    this.tone(secondsLeft <= 3 ? 1320 : 990, 0.07, 'square', 0.07, 1);
+  }
+
   private tone(freq: number, dur: number, type: OscillatorType, vol: number, bend: number, delay = 0): void {
     const ctx = this.ctx;
     if (!ctx || !this.master || this.muted) return;

@@ -34,7 +34,7 @@ On the title screen:
 - **Tab** changes the map; **E** opens the map editor (on a saved map, or the one you edited last).
 - **T** turns map rotation on or off. With it on (the default), a match starts on the chosen map and plays a different built-in map each round, in a random order; the countdown names the next map. With it off, the whole match stays on the chosen map. Test play from the editor always stays on the map being edited.
 - Built-in maps: **The Flat** (two rooms and a hallway), **Studio Apartment** (one open room, quick to the fight), **Bathroom Brawl** (tiny and cramped), **The Office** (cubicles between a meeting room and the boss's office) and **Lights Out** (a dark basement: you see what's near each player, plus bullets, power-ups and muzzle flashes).
-- **M** mutes all sound; **N** turns the music on or off (also works mid-match). The music speeds up as the round goes on and gets busier near the end.
+- **M** mutes all sound; **N** turns the music on or off (also works mid-match). The music speeds up as the round goes on and gets busier near the end. Each map has its own tune: chiptune in The Flat, lo-fi hip-hop in Studio Apartment, twangy surf rock in Bathroom Brawl, office muzak in The Office, and a spooky theremin with a heartbeat in Lights Out (and any dark map). With map rotation on, the music changes with the map each round.
 - **B** toggles full screen (also works mid-match), or use the button in the top-right corner of the menus. Esc leaves full screen too.
 - The key caps light up while held: use this to check your keyboard can register everyone's keys at once.
 

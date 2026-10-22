@@ -6,6 +6,7 @@ import { THE_FLAT } from './theFlat';
 // so fights start sooner.
 export const STUDIO_APARTMENT: MapData = {
   name: 'Studio Apartment',
+  music: 'lofi',
   width: 18,
   height: 12,
   walls: [
@@ -33,6 +34,7 @@ export const STUDIO_APARTMENT: MapData = {
 // (turned around), so neither spawn has better cover.
 export const BATHROOM_BRAWL: MapData = {
   name: 'Bathroom Brawl',
+  music: 'surf',
   width: 13,
   height: 9,
   walls: [
@@ -59,6 +61,7 @@ export const BATHROOM_BRAWL: MapData = {
 // with cubicle partitions across the open-plan floor between them.
 export const THE_OFFICE: MapData = {
   name: 'The Office',
+  music: 'muzak',
   width: 26,
   height: 16,
   walls: [

@@ -31,6 +31,15 @@ export interface MapData {
   walls: Wall[];
   spawns: [Vec2, Vec2];
   dark?: boolean; // lights out: only what's near a player or glowing is visible
+  music?: MusicStyle; // background music while it's played; see musicStyle()
+}
+
+export const MUSIC_STYLES = ['bouncy', 'spooky', 'muzak', 'lofi', 'surf'] as const;
+export type MusicStyle = (typeof MUSIC_STYLES)[number];
+
+// The music a map plays: its own pick, else spooky in the dark, else bouncy.
+export function musicStyle(map: { music?: MusicStyle; dark?: boolean }): MusicStyle {
+  return map.music ?? (map.dark ? 'spooky' : 'bouncy');
 }
 
 // A map prepared for play: includes the outer boundary walls.
@@ -41,6 +50,7 @@ export interface Arena {
   walls: Wall[];
   spawns: [Vec2, Vec2];
   dark: boolean;
+  music: MusicStyle;
   grid: Grid;
 }
 

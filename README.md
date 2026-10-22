@@ -148,7 +148,7 @@ All tunable numbers live in `src/config.ts`.
 - `src/hotseat/`: the hotseat queue and scoreboard, with no DOM.
 - `src/net/`: phone controllers. `protocol.ts` is the message format and room logic with no networking (unit tested); `host.ts` wires it to PeerJS. `src/phone/controller.ts` is the phone side.
 - `scripts/sim.ts`: the headless simulator. `tests/`: Vitest unit tests.
-- `public/`: the PWA manifest, icon and service worker.
+- `public/`: the PWA manifest and icon. `src/sw.js`: the service worker for offline play; the build (`vite.config.ts`) adds the list of files to cache.
 
 For tuning in the browser, `fpd.state` in the developer console is the live match state.
 

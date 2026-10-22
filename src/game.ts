@@ -498,12 +498,3 @@ requestAnimationFrame(frame);
     return screen.kind === 'match' ? screen.state : null;
   },
 };
-
-// Offline support in production builds (the dev server stays uncached).
-if (import.meta.env.PROD && 'serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('sw.js').catch(() => {
-      // Offline play just won't be available.
-    });
-  });
-}

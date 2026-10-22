@@ -52,7 +52,7 @@ A bullet that only just misses you pops up a "Close!" and counts as a clutch dod
 Power-ups flash a ring where they're about to appear, and a ring around each one shrinks as it expires:
 
 - **Gold** (lasts the round, stacks): Swift Shot (faster bullets), Long Shot (more range), Trigger Happy (faster firing), Fleet Foot (faster movement), Spare Dodge (a second dodge charge).
-- **Blue** (temporary): Shield (absorbs the next hit), Rapid Fire (fire twice as fast), Bouncer (bullets bounce off a wall once), Ghost (walk through walls), Lead Shot (aim predicts where your opponent is going).
+- **Blue** (temporary): Shield (absorbs the next hit), Rapid Fire (fire twice as fast), Bouncer (bullets bounce off a wall once), Ghost (walk through walls), Lead Shot (aim predicts where your opponent is going), Laser (shots become instant zaps: a dotted line locks onto your opponent and fires 0.4 s later, so they have a moment to get off it; shorter range and a slower reload than bullets).
 - **Red** (curse on your opponent): Molasses (slows them), Topsy-Turvy (reverses their controls), Big Target (makes them easier to hit).
 
 A label pops up saying what each one did, and the icons under each player's health show what's active.
@@ -124,7 +124,7 @@ The status line at the bottom warns if a spawn overlaps a wall or the spawns can
 npm run sim -- --matches 500 --difficulty normal --seed 1
 ```
 
-Runs bot-vs-bot matches headlessly, much faster than real time, and prints win rates by slot and spawn, round length, hits, shots and dodges per round, and how often each power-up's picker goes on to win the round, checked against the targets in DESIGN.md.
+Runs bot-vs-bot matches headlessly, much faster than real time, and prints win rates by slot and spawn, round length, hits, shots and dodges per round (and laser zaps, with how often they hit), and how often each power-up's picker goes on to win the round, checked against the targets in DESIGN.md.
 
 - `--p1 hard --p2 easy` sets each bot separately.
 - `--set path=value` tries a config change without editing any files, and can be repeated: `--set round.hitsToLose=5 --set fire.cooldown=0.9`.

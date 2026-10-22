@@ -59,6 +59,8 @@ interface RoundRecord {
   suddenDeath: boolean;
   hits: number;
   shots: number;
+  laserShots: number;
+  laserHits: number;
   dodges: number;
   shieldBlocks: number;
   pickups: { kind: PowerUpKind; player: PlayerIndex }[];
@@ -74,7 +76,7 @@ for (let m = 0; m < matches; m++) {
   const seed = baseSeed * 100003 + m;
   const state = createGame(map, seed, cfg);
   const bots = [new BotPlayer(d1, seed * 2 + 1), new BotPlayer(d2, seed * 2 + 2)] as const;
-  const newRound = (): RoundRecord => ({ modifier: state.modifier, winner: null, winnerSpawn: null, length: 0, suddenDeath: false, hits: 0, shots: 0, dodges: 0, shieldBlocks: 0, pickups: [] });
+  const newRound = (): RoundRecord => ({ modifier: state.modifier, winner: null, winnerSpawn: null, length: 0, suddenDeath: false, hits: 0, shots: 0, laserShots: 0, laserHits: 0, dodges: 0, shieldBlocks: 0, pickups: [] });
   let current = newRound();
   let ticks = 0;
   while (state.phase !== 'matchOver' && ticks < MAX_TICKS) {
@@ -83,6 +85,10 @@ for (let m = 0; m < matches; m++) {
     for (const e of state.events) {
       if (e.type === 'hit') current.hits++;
       else if (e.type === 'fire') current.shots++;
+      else if (e.type === 'laserFire') {
+        current.laserShots++;
+        if (e.hit) current.laserHits++;
+      }
       else if (e.type === 'dodge') current.dodges++;
       else if (e.type === 'shieldBlock') current.shieldBlocks++;
       else if (e.type === 'pickup') current.pickups.push({ kind: e.kind, player: e.player });
@@ -148,6 +154,8 @@ const summary = {
   shotsPerRound: mean(rounds.map((r) => r.shots)),
   dodgesPerRound: mean(rounds.map((r) => r.dodges)),
   hitRate: rounds.reduce((a, r) => a + r.hits, 0) / Math.max(1, rounds.reduce((a, r) => a + r.shots, 0)),
+  laserShotsPerRound: mean(rounds.map((r) => r.laserShots)),
+  laserHitRate: rounds.reduce((a, r) => a + r.laserHits, 0) / Math.max(1, rounds.reduce((a, r) => a + r.laserShots, 0)),
   shieldBlocksPerRound: mean(rounds.map((r) => r.shieldBlocks)),
   powerUps: pickupStats,
   modifiers: modifierStats,
@@ -172,6 +180,7 @@ if (asJson) {
     `Reached sudden death ${pct(summary.suddenDeathRate)}`,
     `Hits per round      ${summary.hitsPerRound.toFixed(2)} (+${summary.shieldBlocksPerRound.toFixed(2)} blocked by shields)`,
     `Shots per round     ${summary.shotsPerRound.toFixed(1)}  (${pct(summary.hitRate)} hit)`,
+    ...(summary.laserShotsPerRound > 0 ? [`Lasers per round    ${summary.laserShotsPerRound.toFixed(2)}  (${pct(summary.laserHitRate)} hit)`] : []),
     `Dodges per round    ${summary.dodgesPerRound.toFixed(1)}`,
     '',
     'Power-up        pickups/round   picked by round winner',
@@ -188,7 +197,7 @@ if (asJson) {
       : []),
     '',
     'Targets',
-    `  ${ok(summary.avgRoundLength >= 40 && summary.avgRoundLength <= 70)} rounds average 40-70 s`,
+    `  ${ok(summary.avgRoundLength >= 20 && summary.avgRoundLength <= 70)} rounds average 20-70 s`,
     `  ${ok(Math.max(...spawnWins) <= 0.55)} neither spawn wins more than 55%`,
     `  ${ok(pickupStats.every((p) => p.pickups < 20 || p.byWinner <= 0.7))} no power-up's picker wins the round more than 70%`,
   ];

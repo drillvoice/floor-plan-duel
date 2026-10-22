@@ -25,6 +25,7 @@ const HUD_NAMES: Record<PowerUpKind, string> = {
   bouncer: 'Bouncy',
   ghost: 'Ghost',
   leadShot: 'Sharpshooter',
+  laser: 'Laser',
   molasses: 'Slowed',
   topsyTurvy: 'Flipped',
   bigTarget: 'Big target',

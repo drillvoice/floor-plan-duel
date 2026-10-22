@@ -40,6 +40,14 @@ export class Sound {
         case 'fire':
           this.tone(e.player === 0 ? 660 : 520, 0.06, 'square', 0.08, 0.6);
           break;
+        case 'laserCharge':
+          // A rising whine while the laser locks on.
+          this.tone(e.player === 0 ? 500 : 400, state.cfg.powerUps.laser.chargeTime, 'sine', 0.1, 3);
+          break;
+        case 'laserFire':
+          this.tone(e.player === 0 ? 1800 : 1500, 0.18, 'sawtooth', 0.12, 0.15);
+          this.noiseBurst(0.08, 6000, 0.12);
+          break;
         case 'hit': {
           const final = e.hits >= state.cfg.round.hitsToLose;
           this.noiseBurst(final ? 0.45 : 0.22, 900, 0.5);

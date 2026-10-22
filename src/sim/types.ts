@@ -70,6 +70,7 @@ export const POWER_UP_CATEGORY: Record<PowerUpKind, PowerUpCategory> = {
   bouncer: 'buff',
   ghost: 'buff',
   leadShot: 'buff',
+  laser: 'buff',
   molasses: 'curse',
   topsyTurvy: 'curse',
   bigTarget: 'curse',
@@ -122,10 +123,24 @@ export interface Bullet {
   nearMissed: boolean; // already counted as a near miss
 }
 
+// A laser zap (Laser power-up): locked onto a line when shot, fired along it
+// once `age` reaches `chargeTime`, then shown briefly before it's removed.
+export interface Laser {
+  id: number;
+  owner: PlayerIndex;
+  from: Vec2;
+  to: Vec2; // where the beam ends: its range or the first wall
+  age: number; // seconds since it locked on
+  chargeTime: number;
+  fired: boolean;
+}
+
 export type Phase = 'countdown' | 'playing' | 'roundOver' | 'matchOver';
 
 export type GameEvent =
   | { type: 'fire'; player: PlayerIndex; pos: Vec2 }
+  | { type: 'laserCharge'; player: PlayerIndex; from: Vec2; to: Vec2 }
+  | { type: 'laserFire'; player: PlayerIndex; from: Vec2; to: Vec2; hit: boolean }
   | { type: 'hit'; player: PlayerIndex; pos: Vec2; hits: number }
   | { type: 'nearMiss'; player: PlayerIndex; pos: Vec2 }
   | { type: 'wallHit'; owner: PlayerIndex; pos: Vec2 }
@@ -153,6 +168,7 @@ export interface GameState {
   roundTime: number; // seconds of play in the current round
   players: [PlayerState, PlayerState];
   bullets: Bullet[];
+  lasers: Laser[];
   powerUps: PowerUp[];
   nextPowerUpIn: number;
   nextId: number;

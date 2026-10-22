@@ -6,16 +6,25 @@ import type { InputSource } from '../input/types';
 import { moveCircle } from '../sim/arena';
 import { hitRadiusFor, moveSpeedFor } from '../sim/powerups';
 import { nextRandom, randomRange } from '../sim/rng';
-import type { Bullet, GameState, PlayerIndex, PlayerInput } from '../sim/types';
-import { dist, distSegmentSegment, dot, leftOf, len, normalize, rightOf, scale, sub, add, type Vec2 } from '../sim/vec';
+import type { GameState, PlayerIndex, PlayerInput } from '../sim/types';
+import { dist, distPointSegment, distSegmentSegment, dot, leftOf, len, normalize, rightOf, scale, sub, add, type Vec2 } from '../sim/vec';
 import { findPath } from './pathfind';
 
 export type Difficulty = 'easy' | 'normal' | 'hard';
 
+// Something about to hit us: a shot travelling from `from` along `dir`, for
+// up to `length` units (a bullet's line is open-ended, a laser's isn't).
+interface Threat {
+  from: Vec2;
+  dir: Vec2;
+  length: number;
+  radius: number;
+}
+
 export class BotPlayer implements InputSource {
   readonly kind = 'bot';
   private rng: { rng: number };
-  // Per bullet: whether this bot will react to it (rolled once, on first sight).
+  // Per bullet or laser: whether this bot will react to it (rolled once, on first sight).
   private reactions = new Map<number, boolean>();
   private path: Vec2[] | null = null;
   private pathTarget: Vec2 | null = null;
@@ -44,14 +53,16 @@ export class BotPlayer implements InputSource {
     this.strafeSwitchIn -= dt;
 
     const self = state.players[me];
-    input.shoot = self.lineOfSight;
+    const opp = state.players[me === 0 ? 1 : 0];
+    // A laser shot out of range is wasted, and its cooldown is long.
+    input.shoot = self.lineOfSight && (self.effects.laser <= 0 || dist(self.pos, opp.pos) <= state.cfg.powerUps.laser.range);
 
     const threat = this.findThreat(state, me);
     if (threat) this.evade(state, me, threat, input);
     else {
       const target = this.powerUpTarget(state, me);
       if (target) input.move = this.navigate(state, me, target);
-      else if (!self.lineOfSight) input.move = this.navigate(state, me, state.players[me === 0 ? 1 : 0].pos);
+      else if (!self.lineOfSight) input.move = this.navigate(state, me, opp.pos);
       else input.move = this.fight(state, me);
     }
     // Under Topsy-Turvy the sim reverses our movement, so push the other way.
@@ -59,14 +70,26 @@ export class BotPlayer implements InputSource {
     return input;
   }
 
-  // The most urgent bullet that will hit us soon, among those we've noticed.
-  private findThreat(state: GameState, me: PlayerIndex): Bullet | null {
+  // The most urgent shot that will hit us soon, among those we've noticed:
+  // a bullet heading our way, or a laser locked onto a line we're standing on.
+  private findThreat(state: GameState, me: PlayerIndex): Threat | null {
     const cfg = state.cfg;
     const diff = cfg.bot.difficulty[this.difficulty];
     const self = state.players[me];
     const hitRadius = hitRadiusFor(self, cfg) + cfg.bullet.radius + cfg.bot.threatMargin;
-    let best: Bullet | null = null;
+    let best: Threat | null = null;
     let bestT = Infinity;
+    const lc = cfg.powerUps.laser;
+    for (const l of state.lasers) {
+      if (l.owner === me || l.fired || l.age < diff.reactionDelay) continue;
+      if (distPointSegment(self.pos, l.from, l.to) >= hitRadiusFor(self, cfg) + lc.width / 2 + cfg.bot.threatMargin) continue;
+      if (!this.reacts(l.id, diff.missChance)) continue;
+      const t = l.chargeTime - l.age;
+      if (t < bestT) {
+        bestT = t;
+        best = { from: l.from, dir: normalize(sub(l.to, l.from)), length: dist(l.from, l.to), radius: lc.width / 2 };
+      }
+    }
     for (const b of state.bullets) {
       if (b.owner === me || b.age < diff.reactionDelay) continue;
       const rel = sub(self.pos, b.pos);
@@ -80,36 +103,40 @@ export class BotPlayer implements InputSource {
       const at = add(b.pos, scale(b.vel, t));
       if (state.arena.walls.some((w) => distSegmentSegment(b.pos, at, w.a, w.b) < b.radius + cfg.map.wallThickness / 2))
         continue;
-      if (!this.reactions.has(b.id)) this.reactions.set(b.id, nextRandom(this.rng) >= diff.missChance);
-      if (!this.reactions.get(b.id)) continue;
+      if (!this.reacts(b.id, diff.missChance)) continue;
       if (t < bestT) {
         bestT = t;
-        best = b;
+        best = { from: b.pos, dir: normalize(b.vel), length: Infinity, radius: b.radius };
       }
     }
     if (this.reactions.size > 64) {
-      const live = new Set(state.bullets.map((b) => b.id));
+      const live = new Set([...state.bullets.map((b) => b.id), ...state.lasers.map((l) => l.id)]);
       for (const id of this.reactions.keys()) if (!live.has(id)) this.reactions.delete(id);
     }
     return best;
   }
 
-  private evade(state: GameState, me: PlayerIndex, b: Bullet, input: PlayerInput): void {
+  private reacts(id: number, missChance: number): boolean {
+    if (!this.reactions.has(id)) this.reactions.set(id, nextRandom(this.rng) >= missChance);
+    return this.reactions.get(id)!;
+  }
+
+  private evade(state: GameState, me: PlayerIndex, threat: Threat, input: PlayerInput): void {
     const cfg = state.cfg;
     const self = state.players[me];
-    const dir = normalize(b.vel);
+    const { dir } = threat;
     const missDistance = (p: Vec2) => {
-      const rel = sub(p, b.pos);
-      return len(sub(rel, scale(dir, Math.max(0, dot(rel, dir)))));
+      const rel = sub(p, threat.from);
+      return len(sub(rel, scale(dir, Math.max(0, Math.min(threat.length, dot(rel, dir))))));
     };
-    // Walk sideways off the bullet's line.
+    // Walk sideways off the shot's line.
     let side = leftOf(dir);
-    if (dot(sub(self.pos, b.pos), side) < 0) side = scale(side, -1);
+    if (dot(sub(self.pos, threat.from), side) < 0) side = scale(side, -1);
     input.move = side;
 
     if (self.dash || self.dodgeCharges === 0) return;
     // A dodge goes the way we move, so try dashing to either side of the
-    // bullet's line and take whichever ends furthest off it (walls can stop
+    // shot's line and take whichever ends furthest off it (walls can stop
     // a dash short), as long as it actually gets clear.
     const options = [side, scale(side, -1)].map((dir) => {
       const end = { ...self.pos };
@@ -117,7 +144,7 @@ export class BotPlayer implements InputSource {
       return { dir, miss: missDistance(end) };
     });
     options.sort((a, b) => b.miss - a.miss);
-    if (options[0].miss > hitRadiusFor(self, cfg) + cfg.bullet.radius) {
+    if (options[0].miss > hitRadiusFor(self, cfg) + threat.radius) {
       input.move = options[0].dir;
       input.dodge = true;
     }

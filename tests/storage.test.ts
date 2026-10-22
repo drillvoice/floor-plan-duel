@@ -48,6 +48,19 @@ describe('map storage', () => {
     expect(listSavedMaps()[0]).toMatchObject({ name: 'Old', id: 'named-Old' });
   });
 
+  it('sees changes made outside this module, such as another tab', () => {
+    saveMap({ ...THE_FLAT, id: 'a', name: 'A' });
+    expect(listSavedMaps().map((m) => m.name)).toEqual(['A']);
+    localStorage.setItem('fpd.maps', JSON.stringify([{ ...THE_FLAT, id: 'b', name: 'B' }]));
+    expect(listSavedMaps().map((m) => m.name)).toEqual(['B']);
+  });
+
+  it('hands out a list callers can change without touching the saved one', () => {
+    saveMap({ ...THE_FLAT, id: 'a', name: 'A' });
+    listSavedMaps().pop();
+    expect(listSavedMaps()).toHaveLength(1);
+  });
+
   it('copes with storage being unavailable', () => {
     (globalThis as { localStorage?: unknown }).localStorage = {
       getItem() {

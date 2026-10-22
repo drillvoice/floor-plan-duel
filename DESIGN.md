@@ -11,7 +11,7 @@ Design pillars:
 - **Dodging is the skill.** Every shot is readable and avoidable; a hit should feel like your mistake.
 - **Short, swingy rounds.** About a minute each, best of 5, with power-ups that can turn a round around.
 - **Your own space.** Any room you can draw or photograph becomes an arena.
-- **One device, zero setup.** Open the page, two people play. No accounts, no network.
+- **One device, zero setup.** Open the page, two people play. No accounts; the network is only used when players bring phones as controllers.
 
 ## Controls
 
@@ -49,7 +49,7 @@ Shots fly straight at where the opponent is when fired, slowly enough to see and
 
 Rules:
 
-- **Auto-aim** targets the opponent's current position, not a predicted one. Leading the target is a power-up.
+- **Auto-aim** partly leads a moving opponent: by default it aims 70% of the way from where they are to where they'll be (`bullet.aimLead`), so running in a straight line isn't a free dodge. Lead Shot makes the prediction full.
 - **Line of sight:** you can fire with no line of sight, but the bullet goes straight and hits the wall. A small "blocked" indicator shows when the direct line is obstructed, so walls become cover.
 - **Dodges** are blocked by walls (you stop at the wall) and show a short dash trail.
 - **Hit feedback:** screen shake, flash, a brief slow-motion frame on the third hit. These "juice" touches matter more than they sound.
@@ -87,11 +87,15 @@ Power-ups appear at random spots, linger for a random time, and are either round
 | Topsy-Turvy | Curse | Opponent's movement controls reversed | 3 s | v2 |
 | Big Target | Curse | Opponent grows 50% bigger (easier to hit) | 5 s | v2 |
 
+All thirteen have shipped; the last column records what the first build included.
+
 If round-long stacking proves to snowball, try spawning power-ups slightly closer to whoever is losing.
 
 ## Maps and editor
 
-A map is a list of wall line segments plus two spawn points, saved as JSON. The MVP ships one built-in map and a simple editor; photo import comes in v2 and produces the same JSON.
+A map is a list of wall line segments plus two spawn points, saved as JSON. The MVP shipped one built-in map and a simple editor; photo import comes in v2 and produces the same JSON.
+
+The game now has five built-in maps: The Flat, Studio Apartment, Bathroom Brawl, The Office and Lights Out (a dark map: each player carries a small light, and bullets, power-ups and muzzle flashes glow). A map can set `dark: true` for this. With map rotation on, each round of a match plays a different built-in map.
 
 **Map format**
 
@@ -147,7 +151,7 @@ A static TypeScript web app with a pure simulation core, so the same rules run f
 
 - **Language and build:** TypeScript, Vite.
 - **Rendering:** HTML canvas 2D, no game framework. The visuals are simple shapes, and a plain canvas keeps the simulation independent of rendering. Phaser is a fallback if this gets painful.
-- **Hosting:** static files (GitHub Pages or similar); installable as a PWA so it works offline.
+- **Hosting:** static files, deployed on Vercel (`vercel.json`); any static host works. Installable as a PWA so it works offline.
 - **Tests:** Vitest for the simulation (collision, dodges, power-up timers, round scoring).
 
 **Layers**
@@ -163,17 +167,19 @@ All tunable numbers live in one `config.ts`, so balancing never means hunting th
 
 The MVP proves one thing: dodging slow auto-aimed bullets on a shared laptop is fun. Everything else waits until that's true.
 
-**v1 — MVP**
+**v1 — MVP (done)**
 
-- [ ] Two players on one keyboard, or one player vs bot
-- [ ] Movement, wall collision, auto-aimed bullets, fire cooldown, dodges with cooldown
-- [ ] 3 hits per round, best of 5, 90 s limit with sudden death
-- [ ] Four power-ups (Swift Shot, Trigger Happy, Shield, Molasses) with telegraphs and lifespan rings
-- [ ] Built-in map "The Flat" and the basic wall editor
-- [ ] Bot at three difficulties, plus headless bot-vs-bot simulation
-- [ ] Basic juice: hit flash, screen shake, dash trail, simple synthesised sound effects
+- [x] Two players on one keyboard, or one player vs bot
+- [x] Movement, wall collision, auto-aimed bullets, fire cooldown, dodges with cooldown
+- [x] 3 hits per round, best of 5, 90 s limit with sudden death
+- [x] Four power-ups (Swift Shot, Trigger Happy, Shield, Molasses) with telegraphs and lifespan rings
+- [x] Built-in map "The Flat" and the basic wall editor
+- [x] Bot at three difficulties, plus headless bot-vs-bot simulation
+- [x] Basic juice: hit flash, screen shake, dash trail, simple synthesised sound effects
 
-**v2** — the rest of the power-up set (done), photo/line-drawing import, a few more built-in maps, a "make it a LOT more fun" polish pass, and:
+**v2** — the rest of the power-up set (done), photo/line-drawing import, a few more built-in maps (done: four more, see Maps), a "make it a LOT more fun" polish pass, and:
+
+- **Fun pass (done):** round modifiers (a slot-machine reel picks a one-round rule such as Giant Bullets or One-Hit Wonder, in `src/sim/modifiers.ts`), map rotation (a different map each round), near-miss callouts with a clutch-dodge count on the results, paint splats in the shooter's colour where bullets hit walls, hit-stop and slow motion on knockouts, and synthesised music that speeds up as a round goes on.
 
 - **Phone controllers (done):** players join a room on their phones (QR code or a four-letter code) and get a joystick, Dodge and Shoot. The desktop runs the game; phones only send their controls over a WebRTC data channel, introduced by the public PeerJS server, so the site stays static. Messages are unreliable and unordered for low latency: each one is a full snapshot of the controls, and one-off presses are counters, so a lost message never loses a press. The room logic lives in `src/net/protocol.ts`, with no networking, and is unit tested. Groundwork for 4 players.
 - **Hotseat mode (done):** still 1v1, but for a group taking turns. Players enter their names, the loser of each match swaps out for the next person in the queue, and a scoreboard tracks who's playing and everyone's wins.
@@ -185,12 +191,15 @@ The MVP proves one thing: dodging slow auto-aimed bullets on a shared laptop is 
 
 **Open questions**
 
-- Does auto-aim at the current position make bullets too easy to dodge at range? (Lead Shot may need to be the default at Hard.)
+- **Rounds are shorter than the target.** 300 Normal-vs-Normal matches on The Flat (Oct 2026) average 27.5 s a round against the 40–70 s target, and only 0.1% reach sudden death. Spawn balance (49/51%) and power-ups are within target. Either lengthen rounds (e.g. more hits to lose, slower fire) or lower the target.
+- Does auto-aim at the current position make bullets too easy to dodge at range? (Auto-aim now leads moving targets by 70% by default, `bullet.aimLead`; Lead Shot makes it 100%.)
 - Should there be any reason to shoot without line of sight, such as Bouncer?
-- Do round-long upgrades snowball? Decide after bot simulations.
+- Do round-long upgrades snowball? Not so far: in the same sim no power-up's picker wins the round more than 62% of the time (target: under 70%).
 - Laptop key ghosting with this layout (see Controls).
 
 ## First prompt for Claude Code
+
+Kept for the record: this started the build. Some details have changed since (dodge is now one key that dashes the way you're moving, and v2 features have shipped).
 
 Export this doc as Markdown, save it as `DESIGN.md` in an empty repo, then paste the prompt below. It asks for a short critique before building, so you can veto anything before code is written.
 

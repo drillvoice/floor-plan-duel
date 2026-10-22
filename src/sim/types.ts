@@ -4,7 +4,7 @@ import type { Vec2 } from './vec';
 
 export type PlayerIndex = 0 | 1;
 
-// What every input source (keyboard, bot, later gamepad/touch) produces per tick.
+// What every input source (keyboard, touch, phone, bot) produces per tick.
 export interface PlayerInput {
   move: Vec2; // any length; normalised to at most 1 by the sim
   dodge: boolean; // dash in the direction of `move` (or the last direction moved)

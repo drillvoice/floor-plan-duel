@@ -7,7 +7,7 @@ import { isTextField } from '../input/keyboard';
 import { deleteMap, listSavedMaps, newMapId, saveMap, type SavedMap } from '../maps/storage';
 import { BUILT_IN_MAPS, copyOfBuiltIn } from '../maps/builtin';
 import { autoSpawns, parseMapJson, validateMap } from '../maps/validate';
-import { COLORS } from '../render/renderer';
+import { COLORS } from '../render/theme';
 import type { MapData } from '../sim/types';
 import { dist, distPointSegment, type Vec2 } from '../sim/vec';
 

@@ -18,6 +18,7 @@ import {
   type HotseatSession,
 } from '../hotseat/session';
 import { cycleLook, LOOKS } from '../render/looks';
+import { readJsonPref, writeJsonPref } from '../prefs';
 import { el } from './dom';
 
 const SESSION_KEY = 'fpd.hotseat';
@@ -77,17 +78,14 @@ export class HotseatLobby {
 
   private set(session: HotseatSession): void {
     this.session = session;
-    try {
-      localStorage.setItem(SESSION_KEY, JSON.stringify(session));
-    } catch {
-      // Scores just won't survive a reload.
-    }
+    // If this fails, the scores just won't survive a reload.
+    writeJsonPref(SESSION_KEY, session);
     if (this.active) this.render();
   }
 
   private load(): HotseatSession {
     try {
-      return parseSession(JSON.parse(localStorage.getItem(SESSION_KEY) ?? 'null'));
+      return parseSession(readJsonPref(SESSION_KEY));
     } catch {
       return newSession();
     }

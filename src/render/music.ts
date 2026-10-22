@@ -2,6 +2,7 @@
 // with synthesised bass, lead and drums. Tension (how far through the round
 // we are) raises the tempo and adds layers: hi-hats, then a busy arpeggio.
 
+import { readFlag, writeFlag } from '../prefs';
 import type { Sound } from './audio';
 import { chordTones, freq, HALF_BAR_CHORDS, MELODY_STEPS, STEPS_PER_BAR, TOTAL_STEPS } from './musicScore';
 
@@ -26,22 +27,12 @@ export class Music {
   private paused = false;
 
   constructor(private sound: Sound) {
-    let saved: string | null = null;
-    try {
-      saved = localStorage.getItem(MUSIC_KEY);
-    } catch {
-      // Default to on.
-    }
-    this.enabled = saved !== 'off';
+    this.enabled = readFlag(MUSIC_KEY, true);
   }
 
   toggle(): void {
     this.enabled = !this.enabled;
-    try {
-      localStorage.setItem(MUSIC_KEY, this.enabled ? 'on' : 'off');
-    } catch {
-      // Applies this session only.
-    }
+    writeFlag(MUSIC_KEY, this.enabled);
     if (!this.enabled) this.stop();
   }
 

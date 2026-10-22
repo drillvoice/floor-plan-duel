@@ -2,8 +2,9 @@
 //
 //   npm run sim -- --matches 500 --difficulty normal --seed 1
 //
-// Options: --matches N, --difficulty easy|normal|hard (both bots), --p1 / --p2
-// to set each bot separately, --seed S, --json for machine-readable output,
+// Options: --matches N, --players 2-4 (free-for-all with more than two),
+// --difficulty easy|normal|hard (every bot), --p1 ... --p4 to set each bot
+// separately, --seed S, --json for machine-readable output,
 // and --set path=value (repeatable) to try a config change without editing
 // config.ts, e.g. --set bullet.aimLead=0 --set fire.cooldown=0.5
 // --map NAME picks a built-in map by name (default The Flat).
@@ -15,7 +16,7 @@ import { CONFIG, type Config } from '../src/config';
 import { BUILT_IN_MAPS } from '../src/maps/builtin';
 import { createGame, spawnFor, step } from '../src/sim/step';
 import { MODIFIERS, type ModifierId } from '../src/sim/modifiers';
-import type { PlayerIndex, PowerUpKind } from '../src/sim/types';
+import { MAX_PLAYERS, type PlayerIndex, type PowerUpKind } from '../src/sim/types';
 
 function arg(name: string, fallback: string): string {
   const i = process.argv.indexOf(`--${name}`);
@@ -26,9 +27,11 @@ const matches = Number(arg('matches', '100'));
 const mapName = arg('map', BUILT_IN_MAPS[0].name);
 const map = BUILT_IN_MAPS.find((m) => m.name.toLowerCase() === mapName.toLowerCase());
 if (!map) throw new Error(`Unknown map: ${mapName}. Built-in maps: ${BUILT_IN_MAPS.map((m) => m.name).join(', ')}`);
+const players = Number(arg('players', '2'));
+if (!Number.isInteger(players) || players < 2 || players > MAX_PLAYERS) throw new Error(`--players must be 2 to ${MAX_PLAYERS}`);
 const difficulty = arg('difficulty', 'normal') as Difficulty;
-const d1 = arg('p1', difficulty) as Difficulty;
-const d2 = arg('p2', difficulty) as Difficulty;
+const difficulties = Array.from({ length: players }, (_, i) => arg(`p${i + 1}`, difficulty) as Difficulty);
+const slotNames = difficulties.map((_, i) => `P${i + 1}`);
 const baseSeed = Number(arg('seed', '1'));
 const asJson = process.argv.includes('--json');
 const overrides: string[] = [];
@@ -65,20 +68,20 @@ interface RoundRecord {
 }
 
 const rounds: RoundRecord[] = [];
-const matchWins = [0, 0];
+const matchWins = new Array(players).fill(0);
 let unfinished = 0;
 let totalTicks = 0;
 const started = Date.now();
 
 for (let m = 0; m < matches; m++) {
   const seed = baseSeed * 100003 + m;
-  const state = createGame(map, seed, cfg);
-  const bots = [new BotPlayer(d1, seed * 2 + 1), new BotPlayer(d2, seed * 2 + 2)] as const;
+  const state = createGame(map, seed, cfg, players);
+  const bots = difficulties.map((d, i) => new BotPlayer(d, seed * 4 + i + 1));
   const newRound = (): RoundRecord => ({ modifier: state.modifier, winner: null, winnerSpawn: null, length: 0, suddenDeath: false, hits: 0, shots: 0, dodges: 0, shieldBlocks: 0, pickups: [] });
   let current = newRound();
   let ticks = 0;
   while (state.phase !== 'matchOver' && ticks < MAX_TICKS) {
-    step(state, [bots[0].sample(state, 0), bots[1].sample(state, 1)]);
+    step(state, bots.map((bot, i) => bot.sample(state, i)));
     ticks++;
     for (const e of state.events) {
       if (e.type === 'hit') current.hits++;
@@ -129,17 +132,20 @@ const modifierStats = cfg.modifiers.enabled
     })
   : [];
 
-const spawnWins = [0, 1].map((s) => decided.filter((r) => r.winnerSpawn === s).length / Math.max(1, decided.length));
+const spawnWins = slotNames.map((_, s) => decided.filter((r) => r.winnerSpawn === s).length / Math.max(1, decided.length));
+// A fair share of round wins: 50% in a duel, 25% with four.
+const fairShare = 1 / players;
 const summary = {
   matches,
   map: map.name,
-  difficulty: { p1: d1, p2: d2 },
+  players,
+  difficulty: Object.fromEntries(difficulties.map((d, i) => [`p${i + 1}`, d])),
   seed: baseSeed,
   unfinished,
   matchWinRate: matchWins.map((w) => w / Math.max(1, matches - unfinished)),
   rounds: rounds.length,
   draws: rounds.length - decided.length,
-  roundWinRateBySlot: [0, 1].map((p) => decided.filter((r) => r.winner === p).length / Math.max(1, decided.length)),
+  roundWinRateBySlot: slotNames.map((_, p) => decided.filter((r) => r.winner === p).length / Math.max(1, decided.length)),
   roundWinRateBySpawn: spawnWins,
   avgRoundLength: mean(rounds.map((r) => r.length)),
   suddenDeathRate: rounds.filter((r) => r.suddenDeath).length / Math.max(1, rounds.length),
@@ -160,13 +166,13 @@ if (asJson) {
 } else {
   const ok = (good: boolean) => (good ? '✓' : '✗');
   const lines = [
-    `Floor Plan Duel sim: ${matches} matches on ${map.name}, P1 ${d1} vs P2 ${d2}, seed ${baseSeed}`,
+    `Floor Plan Duel sim: ${matches} matches on ${map.name}, ${difficulties.map((d, i) => `${slotNames[i]} ${d}`).join(' vs ')}, seed ${baseSeed}`,
     ...(overrides.length ? [`  config overrides: ${overrides.join(', ')}`] : []),
     `  ran ${(summary.simSeconds / 60).toFixed(0)} min of play in ${summary.wallSeconds.toFixed(1)} s`,
     '',
-    `Match wins          P1 ${pct(summary.matchWinRate[0])}  P2 ${pct(summary.matchWinRate[1])}${unfinished ? `  (${unfinished} hit the time cap)` : ''}`,
-    `Round wins by slot  P1 ${pct(summary.roundWinRateBySlot[0])}  P2 ${pct(summary.roundWinRateBySlot[1])}`,
-    `Round wins by spawn A ${pct(spawnWins[0])}  B ${pct(spawnWins[1])}`,
+    `Match wins          ${slotNames.map((n, i) => `${n} ${pct(summary.matchWinRate[i])}`).join('  ')}${unfinished ? `  (${unfinished} hit the time cap)` : ''}`,
+    `Round wins by slot  ${slotNames.map((n, i) => `${n} ${pct(summary.roundWinRateBySlot[i])}`).join('  ')}`,
+    `Round wins by spawn ${spawnWins.map((w, i) => `${'ABCD'[i]} ${pct(w)}`).join('  ')}`,
     `Rounds              ${rounds.length} (${summary.draws} draws)`,
     `Avg round length    ${summary.avgRoundLength.toFixed(1)} s`,
     `Reached sudden death ${pct(summary.suddenDeathRate)}`,
@@ -189,7 +195,7 @@ if (asJson) {
     '',
     'Targets',
     `  ${ok(summary.avgRoundLength >= 40 && summary.avgRoundLength <= 70)} rounds average 40-70 s`,
-    `  ${ok(Math.max(...spawnWins) <= 0.55)} neither spawn wins more than 55%`,
+    `  ${ok(Math.max(...spawnWins) <= fairShare + 0.05)} no spawn wins more than ${pct(fairShare + 0.05)}`,
     `  ${ok(pickupStats.every((p) => p.pickups < 20 || p.byWinner <= 0.7))} no power-up's picker wins the round more than 70%`,
   ];
   console.log(lines.join('\n'));

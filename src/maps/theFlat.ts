@@ -25,5 +25,8 @@ export const THE_FLAT: MapData = {
   spawns: [
     { x: 3, y: 4 },
     { x: 21, y: 4 },
+    // Either end of the hallway, for 3 and 4 players.
+    { x: 2, y: 14.25 },
+    { x: 22, y: 14.25 },
   ],
 };

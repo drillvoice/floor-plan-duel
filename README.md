@@ -1,6 +1,6 @@
 # Floor Plan Duel
 
-A top-down 1v1 shooter for two people sharing one laptop keyboard. Shots auto-aim at the opponent but travel slowly, so the game is about moving and dodging. Power-ups appear at random to swing rounds. See [DESIGN.md](DESIGN.md) for the full design.
+A top-down shooter for two people sharing one laptop keyboard, or up to four with phones as controllers. Shots auto-aim at the nearest opponent but travel slowly, so the game is about moving and dodging. Power-ups appear at random to swing rounds. See [DESIGN.md](DESIGN.md) for the full design.
 
 ## Run
 
@@ -25,7 +25,8 @@ The built site works offline after the first visit and can be installed as an ap
 On the title screen:
 
 - **Enter** starts a match, best of 5 rounds, 3 hits to lose a round.
-- **1 / 2** switch each player between Human and Bot (Easy, Normal, Hard). Two bots will play each other.
+- **1 / 2** switch P1 and P2 between Human and Bot (Easy, Normal, Hard). Two bots will play each other.
+- **3 / 4** add P3 and P4 as bots (or take them out again). They have no keys, so a human plays them from a phone (see below).
 - Each player's **dodge key** cycles their look: a plain circle or a cute icon inside it.
 - **H** opens hotseat mode, for a group taking turns (see below).
 - **P** lets players use their phones as controllers (see below).
@@ -44,6 +45,15 @@ On the title screen:
 | Dodge | G | . (full stop) |
 | Pause | Esc | Esc |
 
+### Three or four players
+
+With more than two players it's a free-for-all:
+
+- Auto-aim targets the **nearest** opponent you have a clear shot at (or the nearest of all if a wall blocks everyone). It sticks with its target until someone else is 25% closer, and for 0.6 s after the target ducks behind a wall, so it doesn't flick back and forth. Opponents within half a unit of the same distance count as tied, and aim goes to whoever is doing better: fewer hits taken this round, then more rounds won. These numbers are in `config.ts` under `targeting`. A small dot in each shooter's colour sits on the edge of their target, on the side they're shooting from, so you can see who's aiming at you.
+- A bullet is aimed at its shooter's target but hits any other player it touches on the way.
+- Three hits knock you out of the round: you're greyed out and can't move, shoot or be hit. The last player standing wins the round, and the first to win 3 rounds wins the match.
+- Each map has four spawn points. Players move round them by one each round, so nobody keeps the best spot.
+
 Dodge is a quick dash in the direction you're moving, diagonals included; standing still, it goes the way you last moved. It has a 1.2 s cooldown: the little arrow beside your player shows where a dodge will go, and dims while it recharges. After 90 s a round goes to sudden death and bullets speed up every 5 s.
 
 A bullet that only just misses you pops up a "Close!" and counts as a clutch dodge; the results screen shows each player's total. Bullets that hit a wall leave a splash of the shooter's colour on it, so the walls slowly fill with paint over a match.
@@ -52,7 +62,7 @@ Power-ups flash a ring where they're about to appear, and a ring around each one
 
 - **Gold** (lasts the round, stacks): Swift Shot (faster bullets), Long Shot (more range), Trigger Happy (faster firing), Fleet Foot (faster movement), Spare Dodge (a second dodge charge).
 - **Blue** (temporary): Shield (absorbs the next hit), Rapid Fire (fire twice as fast), Bouncer (bullets bounce off a wall once), Ghost (walk through walls), Lead Shot (aim predicts where your opponent is going).
-- **Red** (curse on your opponent): Molasses (slows them), Topsy-Turvy (reverses their controls), Big Target (makes them easier to hit).
+- **Red** (curse on your opponents, everyone still in the round): Molasses (slows them), Topsy-Turvy (reverses their controls), Big Target (makes them easier to hit).
 
 A label pops up saying what each one did, and the icons under each player's health show what's active.
 
@@ -85,11 +95,11 @@ For a group sharing one laptop. Press **H** on the title screen, add everyone's 
 
 ## Phone controllers
 
-Players can join on their phones instead of sharing the keyboard. Press **P** on the title screen: the screen shows a room code and a QR code.
+Up to four players can join on their phones instead of sharing the keyboard. Press **P** on the title screen: the screen shows a room code and a QR code.
 
-- Each player scans the QR code (or opens the site with `?join` and types the code). The phone takes a free side, P1 or P2; tap the other side to swap if it's free. Pick a look and a name on the phone.
+- Each player scans the QR code (or opens the site with `?join` and types the code). The phone takes the first free side, P1 to P4; tap another side to move if it's free. Pick a look and a name on the phone.
 - Press **Start** on a phone, or Enter on the big screen. During the match the phone shows a joystick (put your thumb down anywhere on the left half), **Dodge** and **Shoot**, and a pause button. It buzzes when you're hit (on phones that support vibration).
-- A side with no phone is played from the keyboard or by a bot, as set on the title screen, so one phone player can take on a keyboard player or a bot.
+- A side with no phone is played as set on the title screen: P1 and P2 from the keyboard or by a bot, P3 and P4 by a bot or nobody. So two keyboard players and two phones make four humans, and one phone player can take on a keyboard player or a bot.
 - Phones stay connected between matches, and **Rematch** on a phone starts the next one. If a phone drops out mid-match the game pauses, and the phone rejoins the same side when it reconnects.
 
 Phones connect straight to the computer with WebRTC. The free [PeerJS](https://peerjs.com) server introduces them, so both need internet access to join; after that the controls go directly between them, over the local network when they share one. The phones must be able to open the same address as the computer, so use the deployed site, or for local testing run `npm run dev -- --host` and open the network address it prints rather than `localhost`.
@@ -100,11 +110,11 @@ Press **E** on the title screen.
 
 - Drag to draw a wall. Ends snap to a half-unit grid and to existing wall ends; hold Shift for straight lines.
 - Click a wall to select it, Delete or Backspace to remove it. Ctrl+Z / Ctrl+Shift+Z undo and redo.
-- Drag the 1 and 2 markers to move the spawns, or use **Auto spawns** to place them as far apart as possible.
+- Drag the 1 to 4 markers to move the spawns, or use **Auto spawns** to place them as far apart as possible. A 1v1 uses spawns 1 and 2, three players add 3, and four use them all. Maps saved before four-player matches get spawns 3 and 4 placed automatically.
 - Every change is saved in this browser straight away (the toolbar shows ✓ Saved), and saved maps appear on the title screen (Tab). **Delete** removes the current map. **Export** / **Import** move maps around as `.json` files.
 - **Test play** (or T) starts a match on the map; leaving the match brings you back to the editor.
 
-The status line at the bottom warns if a spawn overlaps a wall or the spawns can't reach each other.
+The status line at the bottom warns if a spawn overlaps a wall or another spawn, or the spawns can't reach each other.
 
 ## Balancing with the simulator
 
@@ -114,7 +124,8 @@ npm run sim -- --matches 500 --difficulty normal --seed 1
 
 Runs bot-vs-bot matches headlessly, much faster than real time, and prints win rates by slot and spawn, round length, hits, shots and dodges per round, and how often each power-up's picker goes on to win the round, checked against the targets in DESIGN.md.
 
-- `--p1 hard --p2 easy` sets each bot separately.
+- `--players 4` runs free-for-all matches with 3 or 4 bots (default 2); the spawn target becomes a fair share plus 5%.
+- `--p1 hard --p2 easy` sets each bot separately (up to `--p4`).
 - `--set path=value` tries a config change without editing any files, and can be repeated: `--set round.hitsToLose=5 --set fire.cooldown=0.9`.
 - `--map 'Bathroom Brawl'` runs on another built-in map (default The Flat).
 - `--modifiers` plays every round under a random modifier and adds a table of round length, hits, shots and sudden-death rate per modifier. Narrow it down with `--set 'modifiers.pool=["giantBullets"]'`.

@@ -22,7 +22,7 @@ const CLICK_SLOP = 0.25; // a drag shorter than this counts as a click
 type Drag =
   | { kind: 'pending'; down: Vec2 }
   | { kind: 'wall'; from: Vec2; to: Vec2 }
-  | { kind: 'spawn'; index: 0 | 1; pos: Vec2 };
+  | { kind: 'spawn'; index: number; pos: Vec2 };
 
 export interface EditorCallbacks {
   onTestPlay(map: MapData): void;
@@ -32,7 +32,13 @@ export interface EditorCallbacks {
 export function blankMap(): MapData {
   const w = CONFIG.map.defaultWidth;
   const h = CONFIG.map.defaultHeight;
-  return { name: 'My map', width: w, height: h, walls: [], spawns: [{ x: 3, y: h / 2 }, { x: w - 3, y: h / 2 }] };
+  const spawns = [
+    { x: 3, y: h / 2 },
+    { x: w - 3, y: h / 2 },
+    { x: w / 2, y: 3 },
+    { x: w / 2, y: h - 3 },
+  ];
+  return { name: 'My map', width: w, height: h, walls: [], spawns };
 }
 
 export class Editor {
@@ -316,7 +322,7 @@ export class Editor {
     this.shift = e.shiftKey;
     const spawn = this.map.spawns.findIndex((s) => dist(s, p) < CONFIG.player.radius + 0.2);
     if (spawn >= 0) {
-      this.drag = { kind: 'spawn', index: spawn as 0 | 1, pos: { ...this.map.spawns[spawn] } };
+      this.drag = { kind: 'spawn', index: spawn, pos: { ...this.map.spawns[spawn] } };
       return;
     }
     this.drag = { kind: 'pending', down: p };
@@ -497,7 +503,7 @@ export class Editor {
       color = '#ff4d4d';
     } else {
       text =
-        'Drag to draw a wall (Shift: straight) · click a wall to select, Delete to remove · drag 1 / 2 to move spawns · Ctrl+Z / Ctrl+Shift+Z · T to test play';
+        'Drag to draw a wall (Shift: straight) · click a wall to select, Delete to remove · drag 1-4 to move spawns · Ctrl+Z / Ctrl+Shift+Z · T to test play';
     }
     ctx.fillStyle = color;
     ctx.font = '400 14px system-ui, sans-serif';

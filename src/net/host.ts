@@ -130,7 +130,7 @@ export class PhoneHost {
   }
 
   // Called every frame: drops silent phones and keeps each phone up to date.
-  update(screen: HostScreen, canStart: boolean, colors: readonly [string, string]): void {
+  update(screen: HostScreen, canStart: boolean, colors: readonly string[]): void {
     const now = this.clock();
     for (const [conn, info] of this.conns) if (now - info.heardAt > TIMEOUT) this.drop(conn);
     const summary = `${screen}|${canStart}`;

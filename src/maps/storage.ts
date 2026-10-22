@@ -20,15 +20,21 @@ function readAll(): SavedMap[] {
   try {
     const raw = JSON.parse(localStorage.getItem(MAPS_KEY) ?? '[]');
     if (!Array.isArray(raw)) return [];
-    return raw.flatMap((m) => {
+    let upgraded = false;
+    const maps = raw.flatMap((m) => {
       try {
         const map = parseMapJson(JSON.stringify(m));
+        // Maps saved before four players get their extra spawns placed here.
+        if (map.spawns.length !== m.spawns.length) upgraded = true;
         // Maps saved before ids existed are keyed by name.
         return [{ ...map, id: map.id ?? `named-${map.name}` }];
       } catch {
         return [];
       }
     });
+    // Save the placed spawns, so they're worked out only once.
+    if (upgraded) writeAll(maps);
+    return maps;
   } catch {
     return [];
   }

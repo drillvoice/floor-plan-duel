@@ -17,7 +17,7 @@ export function buildArena(map: MapData, cfg: Config): Arena {
     width: w,
     height: h,
     walls,
-    spawns: [{ ...map.spawns[0] }, { ...map.spawns[1] }],
+    spawns: map.spawns.map((sp) => ({ ...sp })),
     dark: !!map.dark,
     grid: buildGrid(w, h, walls, map.spawns[0], cfg),
   };

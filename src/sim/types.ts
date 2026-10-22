@@ -2,7 +2,9 @@ import type { Config, ModifierId, PowerUpKind } from '../config';
 import type { Grid } from './grid';
 import type { Vec2 } from './vec';
 
-export type PlayerIndex = 0 | 1;
+// Players are numbered from 0. A match has 2 to MAX_PLAYERS of them.
+export type PlayerIndex = number;
+export const MAX_PLAYERS = 4;
 
 // What every input source (keyboard, bot, later gamepad/touch) produces per tick.
 export interface PlayerInput {
@@ -29,7 +31,9 @@ export interface MapData {
   width: number;
   height: number;
   walls: Wall[];
-  spawns: [Vec2, Vec2];
+  // One per player, MAX_PLAYERS in all. The first two are the 1v1 pair, so
+  // they sit far apart; a three-player match also uses the third.
+  spawns: Vec2[];
   dark?: boolean; // lights out: only what's near a player or glowing is visible
 }
 
@@ -39,7 +43,7 @@ export interface Arena {
   width: number;
   height: number;
   walls: Wall[];
-  spawns: [Vec2, Vec2];
+  spawns: Vec2[];
   dark: boolean;
   grid: Grid;
 }
@@ -86,29 +90,33 @@ export interface Dash {
 export interface PlayerState {
   pos: Vec2;
   vel: Vec2; // walking velocity achieved last tick (excludes dashes)
-  facing: Vec2; // unit vector toward the opponent
+  facing: Vec2; // unit vector toward the target
+  target: PlayerIndex | null; // the opponent auto-aim shoots at (see chooseTarget)
+  blockedFor: number; // seconds the target has been behind a wall
   lastMove: Vec2; // unit vector of the last movement input; where a dodge goes when standing still
   hits: number; // hits taken this round
+  out: boolean; // knocked out of this round: no moving, shooting or being hit
   roundWins: number;
   nearMisses: number; // bullets that just missed this player, over the whole match
   fireCooldown: number;
   dodgeCharges: number;
   dodgeCooldown: number; // time until the next charge comes back
   dash: Dash | null;
-  lineOfSight: boolean;
+  lineOfSight: boolean; // a clear shot at the target
   effects: Effects;
 }
 
 export interface Bullet {
   id: number;
   owner: PlayerIndex;
+  target: PlayerIndex; // who it was aimed at; it hits any opponent in its way
   pos: Vec2;
   vel: Vec2;
   age: number;
   lifetime: number;
   radius: number;
   bounces: number; // wall bounces left (Bouncer)
-  closestGap: number; // nearest it has come to its target's edge so far
+  closestGap: number; // nearest it has come to its target's edge so far (for near misses)
   nearMissed: boolean; // already counted as a near miss
 }
 
@@ -141,7 +149,7 @@ export interface GameState {
   phaseTime: number; // seconds spent in the current phase
   roundIndex: number; // rounds started so far, including drawn rounds
   roundTime: number; // seconds of play in the current round
-  players: [PlayerState, PlayerState];
+  players: PlayerState[];
   bullets: Bullet[];
   powerUps: PowerUp[];
   nextPowerUpIn: number;

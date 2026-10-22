@@ -4,7 +4,7 @@ Oct 21, 2026 · @Joel
 
 ## Concept
 
-A top-down 1v1 shooter for two people sharing one laptop, played on maps drawn from real floor plans. Shots auto-aim at the opponent but travel slowly, so the game is about moving, dodging and timing rather than aiming. Random power-ups give it a zany, swingy feel. "Floor Plan Duel" is a working title.
+A top-down 1v1 shooter for two people sharing one laptop, played on maps drawn from real floor plans. Shots auto-aim at the opponent but travel slowly, so the game is about moving, dodging and timing rather than aiming. Random power-ups give it a zany, swingy feel. With phones as controllers, up to four can play a free-for-all. "Floor Plan Duel" is a working title.
 
 Design pillars:
 
@@ -24,7 +24,7 @@ Both players share one keyboard, split left and right so hands don't collide. Di
 | Dodge | G | . (full stop) |
 | Pause | Esc | Esc |
 
-Either player slot can be switched to the bot from the start screen, or played from a phone (see Phone controllers below). A Gamepad API mapping comes later; the input layer is built so adding it doesn't touch game logic.
+Either player slot can be switched to the bot from the start screen, or played from a phone (see Phone controllers below). Two more slots, P3 and P4, have no keys: each is a bot, a phone, or empty. A Gamepad API mapping comes later; the input layer is built so adding it doesn't touch game logic.
 
 Open question: some laptop keyboards drop keys when several are held at once (ghosting). Test this combo early on your own laptop and remap if needed.
 
@@ -44,7 +44,7 @@ Shots fly straight at where the opponent is when fired, slowly enough to see and
 | Dodge cooldown | 1.2 s per dodge | Prevents permanent invulnerability |
 | Dodge invulnerability | None | Dodging moves you out of the way; it does not phase through bullets |
 | Hits to lose a round | 3 |  |
-| Round format | Best of 5 rounds | Players respawn at opposite spawn points each round |
+| Round format | Best of 5 rounds | Players move round the spawn points by one each round (in a 1v1, they swap) |
 | Round time limit | 90 s | Then sudden death: bullets speed up 10% every 5 s |
 
 Rules:
@@ -91,13 +91,13 @@ If round-long stacking proves to snowball, try spawning power-ups slightly close
 
 ## Maps and editor
 
-A map is a list of wall line segments plus two spawn points, saved as JSON. The MVP ships one built-in map and a simple editor; photo import comes in v2 and produces the same JSON.
+A map is a list of wall line segments plus four spawn points, saved as JSON. The MVP ships one built-in map and a simple editor; photo import comes in v2 and produces the same JSON.
 
 **Map format**
 
 - Arena bounds in units (default 24 × 16), always enclosed by an outer wall.
 - Walls: line segments with a thickness of 0.3 units.
-- Two spawn points, placed by hand or auto-placed as far apart as possible with a clear path between.
+- Four spawn points, placed by hand or auto-placed as far apart as possible with a clear path between. A 1v1 uses the first two, so they're the furthest-apart pair; three players add the third. Maps saved with two get the other two auto-placed.
 - A derived walkable grid (0.5-unit cells) for power-up placement and bot pathfinding.
 - Saved to localStorage and exportable/importable as a .json file.
 
@@ -175,7 +175,8 @@ The MVP proves one thing: dodging slow auto-aimed bullets on a shared laptop is 
 
 **v2** — the rest of the power-up set (done), photo/line-drawing import, a few more built-in maps, a "make it a LOT more fun" polish pass, and:
 
-- **Phone controllers (done):** players join a room on their phones (QR code or a four-letter code) and get a joystick, Dodge and Shoot. The desktop runs the game; phones only send their controls over a WebRTC data channel, introduced by the public PeerJS server, so the site stays static. Messages are unreliable and unordered for low latency: each one is a full snapshot of the controls, and one-off presses are counters, so a lost message never loses a press. The room logic lives in `src/net/protocol.ts`, with no networking, and is unit tested. Groundwork for 4 players.
+- **Phone controllers (done):** players join a room on their phones (QR code or a four-letter code) and get a joystick, Dodge and Shoot. The desktop runs the game; phones only send their controls over a WebRTC data channel, introduced by the public PeerJS server, so the site stays static. Messages are unreliable and unordered for low latency: each one is a full snapshot of the controls, and one-off presses are counters, so a lost message never loses a press. The room logic lives in `src/net/protocol.ts`, with no networking, and is unit tested.
+- **Up to 4 players (done):** four seats, P1-P4. P1 and P2 are keyboard or bot; P3 and P4 are bot or empty; a phone in any seat plays it, so up to four humans (two keyboard + two phones, or four phones). With 3-4 players it's a free-for-all: auto-aim targets the nearest opponent still in the round that it has a clear shot at (the nearest of all if none). It keeps its target until another is 25% closer, and for 0.6 s after the target goes behind a wall. Near-ties (within 0.5 units) go to whoever is doing better: fewer hits this round, then more rounds won. Bullets hit any opponent they touch, three hits knock you out of the round, and the last player standing wins it. Curses land on every opponent still in. Each map has four spawns; players rotate round them by one each round. A dot on each target's edge, in the shooter's colour, shows who's aiming at whom. Bot sims (4 bots, 25 matches a map) on pile-on, meaning time with 2+ players aiming at the same person while all four are in: stickiness alone cuts it on every map (The Flat 36% → 27%, Studio Apartment 46% → 33%, Bathroom Brawl 79% → 72%). The clear-shot preference raises it on Lights Out (3% → 18%), because players stop duelling through walls and all aim at whoever is visible. The leader tie-break raises it on Studio Apartment (to 68%), because its spawns are near-equidistant, so the leader gets everyone's aim from the start of the round. Bathroom Brawl stays a pile-on map whatever the rules. Open question: is focusing the leader fun, or does it feel unfair? Equal-skill bots can't show whether it curbs snowballing; test with people.
 - **Hotseat mode (done):** still 1v1, but for a group taking turns. Players enter their names, the loser of each match swaps out for the next person in the queue, and a scoreboard tracks who's playing and everyone's wins.
 - **Photo looks:** use a picture of your face inside your player circle, alongside the icon looks.
 

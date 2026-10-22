@@ -1,6 +1,6 @@
 // Phones as controllers: the messages between the desktop (the host, which
 // runs the game) and each phone, plus the host's bookkeeping of who holds
-// which player slot. No networking here, so it can be tested on its own.
+// which of the MAX_PLAYERS player slots (P1-P4). No networking here, so it can be tested on its own.
 //
 // Messages travel over an unreliable channel, so each one is a full snapshot
 // of the sender's state rather than a change. A lost message doesn't matter:
@@ -9,7 +9,7 @@
 // the receiver can tell a new press from one it has already seen.
 
 import type { InputSource } from '../input/types';
-import type { PlayerIndex, PlayerInput } from '../sim/types';
+import { MAX_PLAYERS, type PlayerIndex, type PlayerInput } from '../sim/types';
 
 // Peer IDs on the shared signalling server are global, so prefix ours.
 export const PEER_PREFIX = 'floor-plan-duel-';
@@ -60,8 +60,8 @@ export type HostScreen = 'lobby' | 'match' | 'paused' | 'over';
 export interface HostMessage {
   t: 'host';
   slot: PlayerIndex | null;
-  colors: [string, string]; // each side's player colour
-  taken: [string | null, string | null]; // name of whoever holds each side
+  colors: string[]; // each side's player colour, MAX_PLAYERS of them
+  taken: (string | null)[]; // name of whoever holds each side
   screen: HostScreen;
   canStart: boolean; // whether the start button does anything right now
   buzz: number; // counter: goes up each time this phone's player is hit
@@ -75,6 +75,7 @@ export function cleanName(name: string): string {
 
 const isCount = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v) && v >= 0;
 const isAxis = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+const isSlot = (v: unknown): v is PlayerIndex => typeof v === 'number' && Number.isInteger(v) && v >= 0 && v < MAX_PLAYERS;
 
 // Checks a message from a phone. Anything malformed is dropped.
 export function parsePad(data: unknown): PadMessage | null {
@@ -83,7 +84,7 @@ export function parsePad(data: unknown): PadMessage | null {
   if (d.t !== 'pad' || typeof d.id !== 'string' || !d.id || d.id.length > 64) return null;
   if (typeof d.boot !== 'string' || d.boot.length > 64 || !isCount(d.seq)) return null;
   if (typeof d.name !== 'string' || typeof d.look !== 'string' || d.look.length > 16) return null;
-  if (!(d.want === null || d.want === 0 || d.want === 1)) return null;
+  if (!(d.want === null || isSlot(d.want))) return null;
   if (!isAxis(d.x) || !isAxis(d.y) || typeof d.shoot !== 'boolean') return null;
   if (!isCount(d.shots) || !isCount(d.dodges) || !isCount(d.starts) || !isCount(d.pauses)) return null;
   const clamp = (v: number) => Math.max(-1, Math.min(1, v));
@@ -108,9 +109,9 @@ export function parsePad(data: unknown): PadMessage | null {
 export function parseHost(data: unknown): HostMessage | null {
   if (typeof data !== 'object' || data === null) return null;
   const d = data as Record<string, unknown>;
-  if (d.t !== 'host' || !(d.slot === null || d.slot === 0 || d.slot === 1)) return null;
-  if (!Array.isArray(d.colors) || d.colors.length !== 2 || !d.colors.every((c) => typeof c === 'string')) return null;
-  if (!Array.isArray(d.taken) || d.taken.length !== 2) return null;
+  if (d.t !== 'host' || !(d.slot === null || isSlot(d.slot))) return null;
+  if (!Array.isArray(d.colors) || d.colors.length !== MAX_PLAYERS || !d.colors.every((c) => typeof c === 'string')) return null;
+  if (!Array.isArray(d.taken) || d.taken.length !== MAX_PLAYERS) return null;
   if (!d.taken.every((n) => n === null || typeof n === 'string')) return null;
   if (!['lobby', 'match', 'paused', 'over'].includes(d.screen as string)) return null;
   if (typeof d.canStart !== 'boolean' || !isCount(d.buzz)) return null;
@@ -140,7 +141,7 @@ export type RoomEvent = { type: 'start' } | { type: 'pause' } | { type: 'dropped
 // by a disconnected phone is free for another phone to take.
 export class PhoneRoom {
   private phones = new Map<string, Phone>();
-  private slots: [string | null, string | null] = [null, null];
+  private slots: (string | null)[] = new Array(MAX_PLAYERS).fill(null);
 
   // A message from a phone, already parsed. Returns any one-off actions.
   receive(pad: PadMessage, now: number): RoomEvent[] {
@@ -192,8 +193,8 @@ export class PhoneRoom {
       return;
     }
     if (current !== null) return;
-    const free = ([0, 1] as const).find((i) => this.isFree(i));
-    if (free !== undefined) this.slots[free] = id;
+    const free = this.slots.findIndex((_, i) => this.isFree(i));
+    if (free >= 0) this.slots[free] = id;
   }
 
   private isFree(slot: PlayerIndex): boolean {
@@ -202,7 +203,8 @@ export class PhoneRoom {
   }
 
   slotOf(id: string): PlayerIndex | null {
-    return this.slots[0] === id ? 0 : this.slots[1] === id ? 1 : null;
+    const slot = this.slots.indexOf(id);
+    return slot < 0 ? null : slot;
   }
 
   // The phone holding a slot, if it's connected.
@@ -231,13 +233,13 @@ export class PhoneRoom {
   }
 
   // What the host tells a phone.
-  messageFor(id: string, screen: HostScreen, canStart: boolean, colors: readonly [string, string]): HostMessage {
+  messageFor(id: string, screen: HostScreen, canStart: boolean, colors: readonly string[]): HostMessage {
     const slot = this.slotOf(id);
-    const taken = ([0, 1] as const).map((i) => this.phoneIn(i)?.name ?? null) as [string | null, string | null];
+    const taken = this.slots.map((_, i) => this.phoneIn(i)?.name ?? null);
     return {
       t: 'host',
       slot,
-      colors: [colors[0], colors[1]],
+      colors: colors.slice(0, MAX_PLAYERS),
       taken,
       screen,
       canStart,
@@ -265,16 +267,19 @@ export class PhoneRoom {
   }
 }
 
-// Drives a player from whichever phone holds its slot.
+// Drives a player from whichever phone holds a slot. The slot is the phone's
+// seat (P1-P4), which can differ from the player's number in the match when
+// a seat in between is empty.
 export class PhonePlayer implements InputSource {
   readonly kind = 'human';
 
   constructor(
     private room: PhoneRoom,
     private clock: () => number,
+    readonly slot: PlayerIndex,
   ) {}
 
-  sample(_state: unknown, player: PlayerIndex): PlayerInput {
-    return this.room.sample(player, this.clock());
+  sample(): PlayerInput {
+    return this.room.sample(this.slot, this.clock());
   }
 }

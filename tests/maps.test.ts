@@ -40,6 +40,8 @@ describe('map validation', () => {
       spawns: [
         { x: 4, y: 4 },
         { x: 4, y: 12 },
+        { x: 20, y: 4 },
+        { x: 20, y: 12 },
       ],
     };
     expect(validateMap(split)).toContain("The spawns can't reach each other.");
@@ -50,28 +52,52 @@ describe('map validation', () => {
   });
 
   it('rejects a spawn inside a wall', () => {
-    const bad: MapData = { ...THE_FLAT, spawns: [{ x: 12, y: 5 }, THE_FLAT.spawns[1]] };
+    const bad: MapData = { ...THE_FLAT, spawns: [{ x: 12, y: 5 }, ...THE_FLAT.spawns.slice(1)] };
     expect(validateMap(bad)[0]).toMatch(/Spawn 1 overlaps a wall/);
+  });
+
+  it('needs four spawns, apart from each other, all reachable', () => {
+    expect(validateMap({ ...THE_FLAT, spawns: THE_FLAT.spawns.slice(0, 2) })).toEqual(['A map needs 4 spawn points.']);
+    const stacked = [...THE_FLAT.spawns.slice(0, 3), { x: THE_FLAT.spawns[0].x + 0.5, y: THE_FLAT.spawns[0].y }];
+    expect(validateMap({ ...THE_FLAT, spawns: stacked })).toEqual(['Spawns 1 and 4 overlap.']);
+    // Spawn 4 sealed into the hallway's right end.
+    const sealed: MapData = { ...THE_FLAT, walls: [...THE_FLAT.walls, { a: { x: 19, y: 12.5 }, b: { x: 19, y: 16 } }] };
+    expect(validateMap(sealed)).toContain("The spawns can't reach each other.");
   });
 });
 
 describe('auto spawns', () => {
-  it('places spawns far apart and valid', () => {
+  it('places four spawns far apart and valid', () => {
     const spawns = autoSpawns(THE_FLAT)!;
-    expect(spawns).not.toBeNull();
+    expect(spawns).toHaveLength(4);
     expect(dist(spawns[0], spawns[1])).toBeGreaterThan(12);
+    for (let i = 0; i < 4; i++) for (let j = 0; j < i; j++) expect(dist(spawns[i], spawns[j])).toBeGreaterThan(5);
+    expect(validateMap({ ...THE_FLAT, spawns })).toEqual([]);
+  });
+
+  it('adds spawns to the ones a map already has', () => {
+    const kept = THE_FLAT.spawns.slice(0, 2);
+    const spawns = autoSpawns(THE_FLAT, CONFIG, kept)!;
+    expect(spawns.slice(0, 2)).toEqual(kept);
     expect(validateMap({ ...THE_FLAT, spawns })).toEqual([]);
   });
 });
 
 describe('import', () => {
+  it('gives a two-spawn map from before 4 players the other two spawns', () => {
+    const old = parseMapJson(JSON.stringify({ ...THE_FLAT, spawns: THE_FLAT.spawns.slice(0, 2) }));
+    expect(old.spawns).toHaveLength(4);
+    expect(old.spawns.slice(0, 2)).toEqual(THE_FLAT.spawns.slice(0, 2));
+    expect(validateMap(old)).toEqual([]);
+  });
+
   it('round-trips through JSON', () => {
     expect(parseMapJson(JSON.stringify(THE_FLAT))).toEqual(THE_FLAT);
   });
 
   it('rejects malformed files', () => {
     expect(() => parseMapJson('{"width": 24}')).toThrow();
-    expect(() => parseMapJson(JSON.stringify({ ...THE_FLAT, spawns: [THE_FLAT.spawns[0]] }))).toThrow(/two spawn/);
+    expect(() => parseMapJson(JSON.stringify({ ...THE_FLAT, spawns: [THE_FLAT.spawns[0]] }))).toThrow(/two to 4 spawn/);
     expect(() => parseMapJson('not json')).toThrow();
   });
 });

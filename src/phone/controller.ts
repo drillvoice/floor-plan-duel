@@ -383,7 +383,7 @@ export function startController(joinParam: string): void {
   }
 
   function lobby(h: HostMessage): HTMLElement {
-    const sides = ([0, 1] as const).map((i) => {
+    const sides = h.colors.map((_, i) => {
       const mine = h.slot === i;
       const holder = h.taken[i];
       const b = el('button', {
@@ -438,7 +438,7 @@ export function startController(joinParam: string): void {
 
     const note =
       h.slot === null
-        ? 'Both sides are taken. You can play when someone leaves.'
+        ? 'Every side is taken. You can play when someone leaves.'
         : h.screen === 'match' || h.screen === 'paused'
           ? 'A match is on.'
           : h.screen === 'over'

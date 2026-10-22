@@ -10,7 +10,7 @@ import {
   type PadMessage,
 } from '../src/net/protocol';
 
-const COLORS = ['#7ed957', '#c084fc'] as const;
+const COLORS = ['#7ed957', '#c084fc', '#ff9a3c', '#3fd6cf'] as const;
 
 function pad(id: string, over: Partial<PadMessage> = {}): PadMessage {
   return {
@@ -60,7 +60,9 @@ describe('message checks', () => {
   it('drops malformed messages', () => {
     expect(parsePad(null)).toBeNull();
     expect(parsePad({ ...pad('a'), shots: -1 })).toBeNull();
-    expect(parsePad({ ...pad('a'), want: 2 })).toBeNull();
+    expect(parsePad({ ...pad('a'), want: 3 })).not.toBeNull();
+    expect(parsePad({ ...pad('a'), want: 4 })).toBeNull();
+    expect(parsePad({ ...pad('a'), want: 1.5 })).toBeNull();
     expect(parsePad({ ...pad('a'), x: Number.NaN })).toBeNull();
     expect(parsePad({ ...pad('a'), t: 'host' })).toBeNull();
   });
@@ -71,19 +73,27 @@ describe('message checks', () => {
     const msg = room.messageFor('a', 'lobby', true, COLORS);
     expect(parseHost(JSON.parse(JSON.stringify(msg)))).toEqual(msg);
     expect(parseHost({ ...msg, screen: 'nope' })).toBeNull();
+    expect(parseHost({ ...msg, slot: 4 })).toBeNull();
+    expect(parseHost({ ...msg, colors: msg.colors.slice(0, 2) })).toBeNull();
   });
 });
 
 describe('phone room', () => {
-  it('seats phones in the first free side, a third phone waits', () => {
+  it('seats phones in the first free side, a fifth phone waits', () => {
     const room = new PhoneRoom();
-    room.receive(pad('a'), 0);
-    room.receive(pad('b'), 0);
-    room.receive(pad('c'), 0);
-    expect(room.slotOf('a')).toBe(0);
-    expect(room.slotOf('b')).toBe(1);
-    expect(room.slotOf('c')).toBeNull();
-    expect(room.messageFor('c', 'lobby', true, COLORS).taken).toEqual(['a', 'b']);
+    for (const id of ['a', 'b', 'c', 'd', 'e']) room.receive(pad(id), 0);
+    expect(['a', 'b', 'c', 'd'].map((id) => room.slotOf(id))).toEqual([0, 1, 2, 3]);
+    expect(room.slotOf('e')).toBeNull();
+    expect(room.messageFor('e', 'lobby', true, COLORS).taken).toEqual(['a', 'b', 'c', 'd']);
+  });
+
+  it('lets a phone take P3 or P4 straight away', () => {
+    const room = new PhoneRoom();
+    room.receive(pad('a', { want: 3 }), 0);
+    expect(room.slotOf('a')).toBe(3);
+    expect(room.phoneIn(0)).toBeNull();
+    room.receive(pad('a', { seq: 2, x: 1 }), 0);
+    expect(room.sample(3, 0).move.x).toBe(1);
   });
 
   it('moves a phone to the side it asks for, only if free', () => {

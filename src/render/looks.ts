@@ -25,17 +25,21 @@ export function drawLook(ctx: CanvasRenderingContext2D, look: string, x: number,
   ctx.restore();
 }
 
-export function loadLooks(): [string, string] {
+// One look per player slot (P1-P4). Saves from before four players had two.
+export function loadLooks(): string[] {
+  const defaults = ['🐱', '🐶', '🦊', '🐼'];
   try {
     const saved = JSON.parse(localStorage.getItem(LOOKS_KEY) ?? 'null');
-    if (Array.isArray(saved) && saved.length === 2 && saved.every((l) => LOOKS.includes(l))) return saved as [string, string];
+    if (Array.isArray(saved) && saved.length >= 2 && saved.length <= defaults.length && saved.every((l) => LOOKS.includes(l))) {
+      return defaults.map((d, i) => (i < saved.length ? saved[i] : d));
+    }
   } catch {
     // Fall back to the defaults.
   }
-  return ['🐱', '🐶'];
+  return defaults;
 }
 
-export function saveLooks(looks: [string, string]): void {
+export function saveLooks(looks: readonly string[]): void {
   try {
     localStorage.setItem(LOOKS_KEY, JSON.stringify(looks));
   } catch {

@@ -1,5 +1,6 @@
 // The bot drives a player through the same input interface as a human, so it
-// can't cheat and can fill either slot. It reads the game state the way a
+// can't cheat and can fill any slot. It fights whoever auto-aim targets: the
+// nearest opponent. It reads the game state the way a
 // player reads the screen, with a reaction delay and a chance to miss a dodge.
 
 import type { InputSource } from '../input/types';
@@ -33,7 +34,7 @@ export class BotPlayer implements InputSource {
 
   sample(state: GameState, me: PlayerIndex): PlayerInput {
     const input: PlayerInput = { move: { x: 0, y: 0 }, dodge: false, shoot: false };
-    if (state.phase !== 'playing') return input;
+    if (state.phase !== 'playing' || state.players[me].out) return input;
     if (state.roundIndex !== this.round) {
       this.round = state.roundIndex;
       this.reactions.clear();
@@ -44,6 +45,8 @@ export class BotPlayer implements InputSource {
     this.strafeSwitchIn -= dt;
 
     const self = state.players[me];
+    const opp = self.target === null ? null : state.players[self.target];
+    if (!opp) return input;
     input.shoot = self.lineOfSight;
 
     const threat = this.findThreat(state, me);
@@ -51,7 +54,7 @@ export class BotPlayer implements InputSource {
     else {
       const target = this.powerUpTarget(state, me);
       if (target) input.move = this.navigate(state, me, target);
-      else if (!self.lineOfSight) input.move = this.navigate(state, me, state.players[me === 0 ? 1 : 0].pos);
+      else if (!self.lineOfSight) input.move = this.navigate(state, me, opp.pos);
       else input.move = this.fight(state, me);
     }
     // Under Topsy-Turvy the sim reverses our movement, so push the other way.
@@ -125,13 +128,14 @@ export class BotPlayer implements InputSource {
 
   private powerUpTarget(state: GameState, me: PlayerIndex): Vec2 | null {
     const self = state.players[me];
-    const opp = state.players[me === 0 ? 1 : 0];
+    const opponents = state.players.filter((p, i) => i !== me && !p.out);
     const speed = moveSpeedFor(self.effects, state);
     let best: Vec2 | null = null;
     let bestD = Infinity;
     for (const pu of state.powerUps) {
       const d = dist(self.pos, pu.pos);
-      if (d >= dist(opp.pos, pu.pos)) continue;
+      // Only go for ones we'd reach before anyone else.
+      if (opponents.some((o) => dist(o.pos, pu.pos) <= d)) continue;
       // Straight-line distance underestimates the trip, so allow some slack.
       if ((d * 1.3) / speed > pu.telegraph + pu.remaining) continue;
       if (d < bestD) {
@@ -146,7 +150,7 @@ export class BotPlayer implements InputSource {
   private fight(state: GameState, me: PlayerIndex): Vec2 {
     const bc = state.cfg.bot;
     const self = state.players[me];
-    const opp = state.players[me === 0 ? 1 : 0];
+    const opp = state.players[self.target ?? me];
     if (this.strafeSwitchIn <= 0 || (len(self.vel) < 0.5 && this.strafeSwitchIn < bc.strafeSwitchMin * 0.7)) {
       this.strafeDir = nextRandom(this.rng) < 0.5 ? -1 : 1;
       this.strafeSwitchIn = randomRange(this.rng, bc.strafeSwitchMin, bc.strafeSwitchMax);

@@ -18,6 +18,7 @@ import { HotseatLobby } from './screens/hotseat';
 import { MatchOverlay, MobileMenu, prefersTouch, type OverlayMode } from './screens/mobile';
 import { PhoneLobby } from './screens/phones';
 import { Settings, type Slot } from './settings';
+import { shuffled } from './sim/rng';
 import { createGame, step } from './sim/step';
 import type { GameState, MapData } from './sim/types';
 
@@ -81,15 +82,11 @@ function sideNames(): [string, string] {
 }
 
 // The maps a match plays, one per round: the chosen map first, then the other
-// built-in maps in a random order. Test play from the editor sticks to its map.
-function matchMaps(first: MapData, from: MatchFrom): MapData[] {
+// built-in maps in an order set by the match's seed, so the seed alone says
+// how a match went. Test play from the editor sticks to its map.
+function matchMaps(first: MapData, from: MatchFrom, seed: number): MapData[] {
   if (!settings.rotation || from === 'editor') return [first];
-  const rest = BUILT_IN_MAPS.filter((m) => m !== first);
-  for (let i = rest.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [rest[i], rest[j]] = [rest[j], rest[i]];
-  }
-  return [first, ...rest];
+  return [first, ...shuffled(BUILT_IN_MAPS.filter((m) => m !== first), seed)];
 }
 
 const looks = loadLooks();
@@ -309,7 +306,7 @@ function startMatch(map: MapData, from: MatchFrom = 'title', hotseat?: HotseatMa
   }
   renderer.compact = from === 'mobile';
   renderer.pausedHint = from === 'mobile' ? '' : 'Esc to resume · Q to quit to title';
-  screen = { kind: 'match', state: createGame(matchMaps(map, from), seed, cfg), map, paused: false, from, recorded: false };
+  screen = { kind: 'match', state: createGame(matchMaps(map, from, seed), seed, cfg), map, paused: false, from, recorded: false };
   keyboard.clear();
   music.start();
 }

@@ -1,5 +1,5 @@
 // Phone lobby: a room code and QR code for phones to join, and which phone
-// holds each player. Phones stay connected after leaving this screen, so
+// holds each of the four seats. Phones stay connected after leaving this screen, so
 // they can go straight back in for a rematch.
 
 import qrcode from 'qrcode-generator';
@@ -12,8 +12,9 @@ import { el } from './dom';
 export interface PhoneLobbyCallbacks {
   onStart(): void;
   onExit(): void;
-  // Who plays a side with no phone: "Human (keyboard)" or "Bot · Normal".
-  fallback(slot: PlayerIndex): string;
+  // Who plays a seat with no phone: "Human (keyboard)", "Bot · Normal", or
+  // null when nobody does (P3 and P4 can be empty).
+  fallback(slot: PlayerIndex): string | null;
   colors: readonly string[];
 }
 
@@ -62,11 +63,12 @@ export class PhoneLobby {
     const { host } = this;
     const url = joinUrl(location.href, host.code);
     const local = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
-    const seats = ([0, 1] as const).map((i) => {
+    const seats = this.callbacks.colors.map((_, i) => {
       const phone = host.room.phoneIn(i);
       if (phone) return { icon: phone.look || '📱', name: phone.name || `Phone ${i + 1}`, note: 'Phone connected' };
       if (host.room.isWaitingFor(i)) return { icon: '📱', name: 'Reconnecting…', note: 'Waiting for the phone to come back' };
-      return { icon: '', name: 'No phone yet', note: `Plays as ${this.callbacks.fallback(i)}` };
+      const fallback = this.callbacks.fallback(i);
+      return { icon: '', name: 'No phone yet', note: fallback ? `Plays as ${fallback}` : 'Empty until a phone joins' };
     });
     // Rebuild only when something visible changed (keeps the QR code steady).
     const key = JSON.stringify([host.status, url, local, seats]);
@@ -92,7 +94,7 @@ export class PhoneLobby {
       look.style.background = color;
       const name = el('div', { className: 'seat-name', textContent: s.name });
       name.style.color = color;
-      return el('div', { className: `seat${host.room.phoneIn(i as PlayerIndex) ? ' joined' : ''}` }, [
+      return el('div', { className: `seat${host.room.phoneIn(i) ? ' joined' : ''}` }, [
         look,
         name,
         el('div', { className: 'seat-note', textContent: `P${i + 1} · ${s.note}` }),
@@ -107,7 +109,7 @@ export class PhoneLobby {
     this.root.replaceChildren(
       el('div', { className: 'panel' }, [
         el('h1', { textContent: 'Phone controllers' }),
-        el('p', { className: 'sub', textContent: 'Each player joins on their phone and gets a joystick with Dodge and Shoot buttons.' }),
+        el('p', { className: 'sub', textContent: 'Up to four players join on their phones and get a joystick with Dodge and Shoot buttons.' }),
         el('div', { className: 'join' }, [
           qrBox,
           el('div', { className: 'join-text' }, [

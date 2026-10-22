@@ -2,6 +2,9 @@
 
 import type { GameEvent, GameState } from '../sim/types';
 
+// Each player's shots have their own pitch, so you can hear who's firing.
+const FIRE_PITCH = [660, 520, 590, 470];
+
 export class Sound {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
@@ -38,7 +41,7 @@ export class Sound {
     for (const e of events) {
       switch (e.type) {
         case 'fire':
-          this.tone(e.player === 0 ? 660 : 520, 0.06, 'square', 0.08, 0.6);
+          this.tone(FIRE_PITCH[e.player % FIRE_PITCH.length], 0.06, 'square', 0.08, 0.6);
           break;
         case 'hit': {
           const final = e.hits >= state.cfg.round.hitsToLose;

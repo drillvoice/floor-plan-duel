@@ -5,7 +5,7 @@ import { fireCooldownFor, hitRadiusFor, maxDodgeCharges, ON_OPPONENT, STACKING }
 import { dodgeDirection, suddenDeathMultiplier } from '../sim/step';
 import { MODIFIER_IDS, POWER_UP_KINDS } from '../config';
 import { MODIFIERS } from '../sim/modifiers';
-import { POWER_UP_CATEGORY, type Arena, type GameEvent, type GameState, type PlayerIndex, type PowerUp, type PowerUpKind } from '../sim/types';
+import { MAX_PLAYERS, POWER_UP_CATEGORY, type Arena, type GameEvent, type GameState, type PlayerIndex, type PowerUp, type PowerUpKind } from '../sim/types';
 import { CATEGORY_COLORS, drawPowerUpGlyph, powerUpColor } from './icons';
 import { drawLook } from './looks';
 import { add, closestPointOnSegment, distPointSegment, scale, type Vec2 } from '../sim/vec';
@@ -17,10 +17,10 @@ export const COLORS = {
   wall: '#e9e4d8',
   text: '#f2efe8',
   muted: '#8b90a0',
-  players: ['#7ed957', '#c084fc'] as const,
+  // P1-P4, kept clear of the power-up colours (gold, blue, red).
+  players: ['#7ed957', '#c084fc', '#ff9a3c', '#3fd6cf'] as const,
 };
 
-const PLAYER_NAMES = ['P1', 'P2'] as const;
 const TIMER_AMBER = '#ffb020';
 const TIMER_RED = '#ff4d4d';
 const HUD_HEIGHT = 64;
@@ -31,7 +31,7 @@ const SIDE_MIN = 150;
 const SIDE_MAX = 260;
 const SIDE_GAP = 16;
 // Smallest window the title screen fits at full size.
-const TITLE_MIN_H = 540;
+const TITLE_MIN_H = 600;
 const TITLE_MIN_W = 820;
 
 interface Particle {
@@ -148,8 +148,8 @@ export class Renderer {
   private scale = 1;
   private origin = { x: 0, y: 0 };
   private sideW = SIDE_MIN;
-  private hitFlash = [0, 0];
-  private nearMissGlow = [0, 0];
+  private hitFlash: number[] = new Array(MAX_PLAYERS).fill(0);
+  private nearMissGlow: number[] = new Array(MAX_PLAYERS).fill(0);
   private trails: Trail[] = [];
   private pendingDash: { player: PlayerIndex; from: Vec2 }[] = [];
   private particles: Particle[] = [];
@@ -165,10 +165,12 @@ export class Renderer {
   private shake = 0;
   private screenFlash = 0;
   private suddenDeathBanner = 0;
-  // Each player's chosen look (see looks.ts); set by the app.
-  looks: [string, string] = ['', ''];
-  // Names shown in the HUD and results (player names in hotseat).
-  names: [string, string] = ['P1', 'P2'];
+  // Per player in the match, set by the app: their look (see looks.ts), the
+  // name shown in the HUD and results, and their colour (their seat's, so P3
+  // keeps P3's colour even in a match where P2's seat is empty).
+  looks: string[] = ['', '', '', ''];
+  names: string[] = ['P1', 'P2', 'P3', 'P4'];
+  colors: string[] = [...COLORS.players];
   matchOverHint = 'Enter for a rematch · Esc for title';
 
   constructor(private canvas: HTMLCanvasElement) {
@@ -196,8 +198,10 @@ export class Renderer {
           const final = e.hits >= state.cfg.round.hitsToLose;
           this.hitFlash[e.player] = 0.18;
           this.shake = Math.max(this.shake, final ? 1 : 0.55);
-          if (final) this.screenFlash = 0.35;
-          this.burst(e.pos, COLORS.players[e.player], final ? 28 : 14, final ? 7 : 5);
+          // The whole screen flashes for the knockout that ends the round.
+          if (final && state.phase !== 'playing') this.screenFlash = 0.35;
+          else if (final) this.callout(e.player, 'Knocked out!', this.colors[e.player]);
+          this.burst(e.pos, this.colors[e.player], final ? 28 : 14, final ? 7 : 5);
           break;
         }
         case 'nearMiss': {
@@ -220,11 +224,11 @@ export class Renderer {
         case 'wallHit':
           this.burst(e.pos, COLORS.wall, 4, 2);
           this.flashes.push({ pos: e.pos, age: FLASH_LIFE / 2 });
-          this.splat(state, e.pos, COLORS.players[e.owner], 1);
+          this.splat(state, e.pos, this.colors[e.owner], 1);
           break;
         case 'bounce':
           this.burst(e.pos, CATEGORY_COLORS.buff, 6, 3);
-          this.splat(state, e.pos, COLORS.players[e.owner], 0.6);
+          this.splat(state, e.pos, this.colors[e.owner], 0.6);
           break;
         case 'dodge':
           this.pendingDash.push({ player: e.player, from: e.from });
@@ -238,7 +242,11 @@ export class Renderer {
             this.callout(e.player, `${text.self}${n > 1 ? ` ×${n}` : ''}`, color);
           } else {
             this.callout(e.player, text.self, color);
-            if (ON_OPPONENT.has(e.kind) && text.victim) this.callout(e.player === 0 ? 1 : 0, text.victim, color);
+            if (ON_OPPONENT.has(e.kind) && text.victim) {
+              state.players.forEach((p, i) => {
+                if (i !== e.player && !p.out) this.callout(i, text.victim!, color);
+              });
+            }
           }
           break;
         }
@@ -352,7 +360,13 @@ export class Renderer {
     this.drawTrails();
     for (const pu of state.powerUps) this.drawPowerUp(state, pu);
     for (const b of state.bullets) this.drawBullet(state, b.owner, b.pos, b.radius, b.age, b.lifetime, b.bounces > 0);
-    for (const i of [0, 1] as const) this.drawPlayer(state, i);
+    state.players.forEach((p, i) => {
+      if (p.out) this.drawKnockedOut(state, i);
+    });
+    state.players.forEach((p, i) => {
+      if (!p.out) this.drawPlayer(state, i);
+    });
+    if (state.players.length > 2) this.drawTargets(state);
     if (state.arena.dark) this.drawDarkness(state);
     this.drawEffects();
     this.drawCallouts(state);
@@ -472,7 +486,7 @@ export class Renderer {
       ctx.fillStyle = grad;
       ctx.fillRect(c.x - r, c.y - r, r * 2, r * 2);
     };
-    for (const p of state.players) light(p.pos, PLAYER_LIGHT, 1);
+    for (const p of state.players) if (!p.out) light(p.pos, PLAYER_LIGHT, 1);
     for (const b of state.bullets) light(b.pos, 1.1, 0.9);
     for (const pu of state.powerUps) light(pu.pos, pu.telegraph > 0 ? 1.4 : 1.2, 0.8);
     for (const f of this.flashes) light(f.pos, FLASH_LIGHT * (1 - f.age / FLASH_LIFE), 0.9);
@@ -494,7 +508,7 @@ export class Renderer {
     ctx.textBaseline = 'bottom';
     ctx.font = '800 17px system-ui, sans-serif';
     ctx.lineJoin = 'round';
-    for (const i of [0, 1] as const) {
+    for (let i = 0; i < state.players.length; i++) {
       const mine = this.callouts.filter((c) => c.player === i);
       mine.forEach((c, n) => {
         const t = c.age / CALLOUT_LIFE;
@@ -544,7 +558,7 @@ export class Renderer {
       const life = 1 - t.age / 0.35;
       const grad = ctx.createLinearGradient(a.x, a.y, b.x, b.y);
       grad.addColorStop(0, 'rgba(255,255,255,0)');
-      grad.addColorStop(1, hexAlpha(COLORS.players[t.player], 0.55 * life));
+      grad.addColorStop(1, hexAlpha(this.colors[t.player], 0.55 * life));
       ctx.strokeStyle = grad;
       ctx.lineWidth = this.scale * 0.8 * life;
       ctx.lineCap = 'round';
@@ -568,7 +582,7 @@ export class Renderer {
     const fade = state.cfg.bullet.fadeTime;
     const alpha = Math.max(0, Math.min(1, (lifetime - age) / fade));
     const p = this.toScreen(pos);
-    ctx.fillStyle = hexAlpha(COLORS.players[owner], alpha);
+    ctx.fillStyle = hexAlpha(this.colors[owner], alpha);
     ctx.beginPath();
     ctx.arc(p.x, p.y, radius * this.scale, 0, Math.PI * 2);
     ctx.fill();
@@ -585,7 +599,7 @@ export class Renderer {
     const c = this.toScreen(p.pos);
     // Drawn at hit size, so Big Target visibly grows.
     const r = hitRadiusFor(p, cfg) * this.scale;
-    const color = COLORS.players[i];
+    const color = this.colors[i];
     // A Ghost is see-through.
     ctx.save();
     if (p.effects.ghost > 0) ctx.globalAlpha = 0.4 + 0.15 * Math.sin(state.tick * 0.3);
@@ -693,7 +707,7 @@ export class Renderer {
       ctx.stroke();
     }
 
-    // "Blocked" marker when the direct line to the opponent hits a wall.
+    // "Blocked" marker when the direct line to the target hits a wall.
     if (!p.lineOfSight && state.phase === 'playing') {
       const m = { x: c.x, y: c.y - r - 12 };
       ctx.strokeStyle = COLORS.muted;
@@ -704,6 +718,50 @@ export class Renderer {
       ctx.lineTo(m.x + 4.2, m.y - 4.2);
       ctx.stroke();
     }
+  }
+
+  // Where a knocked-out player went down: a faded circle with a cross.
+  private drawKnockedOut(state: GameState, i: PlayerIndex): void {
+    const ctx = this.ctx;
+    const c = this.toScreen(state.players[i].pos);
+    const r = state.cfg.player.radius * this.scale;
+    ctx.save();
+    ctx.globalAlpha = 0.3;
+    ctx.fillStyle = this.colors[i];
+    ctx.beginPath();
+    ctx.arc(c.x, c.y, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 0.6;
+    ctx.strokeStyle = COLORS.background;
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    const d = r * 0.45;
+    ctx.beginPath();
+    ctx.moveTo(c.x - d, c.y - d);
+    ctx.lineTo(c.x + d, c.y + d);
+    ctx.moveTo(c.x + d, c.y - d);
+    ctx.lineTo(c.x - d, c.y + d);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // With more than two players, who's aiming at whom: a dot in the shooter's
+  // colour on the edge of their target, on the side the shooter is.
+  private drawTargets(state: GameState): void {
+    const ctx = this.ctx;
+    state.players.forEach((p, i) => {
+      if (p.out || p.target === null || state.phase !== 'playing') return;
+      const t = state.players[p.target];
+      const away = scale(p.facing, -(hitRadiusFor(t, state.cfg) + 0.32));
+      const c = this.toScreen(add(t.pos, away));
+      ctx.fillStyle = this.colors[i];
+      ctx.strokeStyle = 'rgba(10,11,15,0.8)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, Math.max(3, this.scale * 0.13), 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    });
   }
 
   private drawPowerUp(state: GameState, pu: PowerUp): void {
@@ -749,7 +807,14 @@ export class Renderer {
     const ctx = this.ctx;
     const cfg = state.cfg;
     ctx.textBaseline = 'middle';
-    for (const i of [0, 1] as const) this.drawSidePanel(state, i);
+    // Odd players (P1, P3) down the left, even ones down the right; with more
+    // than two, each column holds two panels, one above the other.
+    const rows = state.players.length > 2 ? 2 : 1;
+    const panelH = (this.height - this.origin.y) / rows;
+    state.players.forEach((_, i) => {
+      const top = this.origin.y + Math.floor(i / 2) * panelH;
+      this.drawSidePanel(state, i, top, top + panelH - (rows > 1 ? 16 : 0));
+    });
 
     // Round timer: a number, plus a bar across the top of the arena that
     // shrinks and turns amber, then red, as time runs out.
@@ -783,24 +848,28 @@ export class Renderer {
     }
   }
 
-  // One player's status in the column beside the arena, sized to read at a
-  // glance: name, health, round wins, then active power-ups. P2's column is
-  // a mirror image of P1's.
-  private drawSidePanel(state: GameState, i: PlayerIndex): void {
+  // One player's status in the column beside the arena, between `top` and
+  // `bottom`, sized to read at a glance: name, health, round wins, then
+  // active power-ups. The right-hand column mirrors the left. A player who's
+  // been knocked out is greyed out until the next round.
+  private drawSidePanel(state: GameState, i: PlayerIndex, top: number, bottom: number): void {
     const ctx = this.ctx;
     const cfg = state.cfg;
     const p = state.players[i];
-    const left = i === 0;
+    const left = i % 2 === 0;
     const dir = left ? 1 : -1;
     const w = this.sideW;
     const cx = left ? this.origin.x / 2 : this.width - this.origin.x / 2;
     const outer = cx - (dir * w) / 2;
-    const u = Math.min(1.8, w / 140);
-    let y = this.origin.y;
+    // The header (look to round wins) is about 230u tall; leave room below it.
+    const u = Math.max(0.5, Math.min(1.8, w / 140, (bottom - top) / 290));
+    let y = top;
+    ctx.save();
+    if (p.out) ctx.globalAlpha = 0.35;
 
     // Look and name, shrunk to fit long hotseat names.
     const r = 22 * u;
-    ctx.fillStyle = COLORS.players[i];
+    ctx.fillStyle = this.colors[i];
     ctx.beginPath();
     ctx.arc(cx, y + r, r, 0, Math.PI * 2);
     ctx.fill();
@@ -827,7 +896,7 @@ export class Renderer {
       ctx.beginPath();
       ctx.arc(px, y + pipD / 2, pipD / 2 - 1.5, 0, Math.PI * 2);
       if (alive) {
-        ctx.fillStyle = COLORS.players[i];
+        ctx.fillStyle = this.colors[i];
         ctx.fill();
       } else {
         ctx.strokeStyle = 'rgba(255,255,255,0.18)';
@@ -866,7 +935,7 @@ export class Renderer {
     for (const kind of POWER_UP_KINDS) {
       const amount = p.effects[kind];
       if (amount <= 0) continue;
-      if (y + rowH > this.height) break;
+      if (y + rowH > bottom) break;
       const iy = y + iconR;
       const color = CATEGORY_COLORS[POWER_UP_CATEGORY[kind]];
       ctx.fillStyle = color;
@@ -891,6 +960,7 @@ export class Renderer {
       ctx.fillText(HUD_NAMES[kind], textX, iy + 11 * u);
       y += rowH;
     }
+    ctx.restore();
   }
 
   private label(i: PlayerIndex): string {
@@ -924,17 +994,17 @@ export class Renderer {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     const winner = state.phase === 'matchOver' ? state.matchWinner : state.phase === 'roundOver' ? state.lastRoundWinner : null;
-    ctx.fillStyle = winner !== null && !paused ? COLORS.players[winner] : COLORS.text;
+    ctx.fillStyle = winner !== null && !paused ? this.colors[winner] : COLORS.text;
     ctx.font = '800 52px system-ui, sans-serif';
     ctx.fillText(title, this.width / 2, this.height / 2 - 16);
     ctx.fillStyle = COLORS.text;
     ctx.font = '500 18px system-ui, sans-serif';
     ctx.fillText(sub, this.width / 2, this.height / 2 + 32);
     if (state.phase === 'matchOver' && !paused) {
-      const [a, b] = state.players.map((p) => p.nearMisses);
+      const tally = state.players.map((p, i) => `${this.names[i]} ${p.nearMisses}`).join(' · ');
       ctx.fillStyle = NEAR_MISS_COLOR;
       ctx.font = '600 16px system-ui, sans-serif';
-      ctx.fillText(`Clutch dodges: ${this.names[0]} ${a} · ${this.names[1]} ${b}`, this.width / 2, this.height / 2 + 68);
+      ctx.fillText(`Clutch dodges: ${tally}`, this.width / 2, this.height / 2 + 68);
     }
   }
 
@@ -1028,8 +1098,8 @@ export class Renderer {
     ctx.scale(s, s);
     const cx = w / 2;
     const footer = h - 30;
-    const head = Math.max(50, Math.min(h * 0.2, footer - 460));
-    const top = Math.max(head + 190, Math.min(h * 0.42, footer - 270));
+    const head = Math.max(50, Math.min(h * 0.2, footer - 520));
+    const top = Math.max(head + 190, Math.min(h * 0.42, footer - 330));
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = COLORS.text;
@@ -1057,6 +1127,9 @@ export class Renderer {
     const colW = Math.min(360, w / 2 - 20);
     this.drawKeyPanel(KEY_BINDINGS.p1, 0, cx - colW / 2 - 10, top, isHeld, slots[0]);
     this.drawKeyPanel(KEY_BINDINGS.p2, 1, cx + colW / 2 + 10, top, isHeld, slots[1]);
+    // P3 and P4 have no keys: a bot, a phone, or nobody.
+    this.drawExtraSlot(2, cx - colW / 2 - 10, top + 278, slots[2]);
+    this.drawExtraSlot(3, cx + colW / 2 + 10, top + 278, slots[3]);
 
     ctx.font = '400 14px system-ui, sans-serif';
     ctx.fillStyle = COLORS.muted;
@@ -1066,6 +1139,30 @@ export class Renderer {
       cx,
       footer,
     );
+    ctx.restore();
+  }
+
+  // A one-line row for P3 or P4: look, who plays it, and how to change that.
+  private drawExtraSlot(i: PlayerIndex, cx: number, y: number, slot: string): void {
+    const ctx = this.ctx;
+    const on = slot !== 'off';
+    ctx.save();
+    if (!on) ctx.globalAlpha = 0.55;
+    ctx.fillStyle = COLORS.players[i];
+    ctx.beginPath();
+    ctx.arc(cx - 120, y, 16, 0, Math.PI * 2);
+    ctx.fill();
+    if (on) drawLook(ctx, this.looks[i], cx - 120, y, 16);
+    ctx.textAlign = 'left';
+    ctx.font = '700 18px system-ui, sans-serif';
+    ctx.fillText(`P${i + 1}`, cx - 96, y);
+    ctx.fillStyle = COLORS.text;
+    ctx.font = '600 16px system-ui, sans-serif';
+    ctx.fillText(slotLabel(slot), cx - 58, y - 8);
+    ctx.fillStyle = COLORS.muted;
+    ctx.font = '400 13px system-ui, sans-serif';
+    const hint = slot.startsWith('📱') ? 'playing on a phone' : on ? `press ${i + 1} to change` : `press ${i + 1} to add a bot, or join by phone (P)`;
+    ctx.fillText(hint, cx - 58, y + 11);
     ctx.restore();
   }
 
@@ -1081,7 +1178,7 @@ export class Renderer {
     ctx.fillStyle = COLORS.players[i];
     ctx.font = '700 22px system-ui, sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText(PLAYER_NAMES[i], cx + 16, top);
+    ctx.fillText(`P${i + 1}`, cx + 16, top);
     // Look preview, cycled with this player's dodge keys.
     ctx.beginPath();
     ctx.arc(cx - 24, top, 20, 0, Math.PI * 2);
@@ -1089,7 +1186,7 @@ export class Renderer {
     drawLook(ctx, this.looks[i], cx - 24, top, 20);
     // A slot is 'human', a bot difficulty, or a phone's label ("📱 Name").
     const phone = slot.startsWith('📱');
-    const who = phone ? slot : slot === 'human' ? 'Human' : `Bot · ${slot[0].toUpperCase()}${slot.slice(1)}`;
+    const who = slotLabel(slot);
     ctx.fillStyle = COLORS.text;
     ctx.font = '600 16px system-ui, sans-serif';
     ctx.fillText(who, cx, top + 190);
@@ -1141,6 +1238,14 @@ export class Renderer {
     cap(keys.dodge, ax + step * (shootFirst ? 1.5 : 0.5), y0 + k + gap, 'dodge');
     ctx.globalAlpha = 1;
   }
+}
+
+// A slot is 'human', 'off', a bot difficulty, or a phone's label ("📱 Name").
+function slotLabel(slot: string): string {
+  if (slot.startsWith('📱')) return slot;
+  if (slot === 'human') return 'Human';
+  if (slot === 'off') return 'No player';
+  return `Bot · ${slot[0].toUpperCase()}${slot.slice(1)}`;
 }
 
 function keyLabel(code: string): string {

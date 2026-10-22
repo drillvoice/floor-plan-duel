@@ -24,13 +24,15 @@ export const STUDIO_APARTMENT: MapData = {
   spawns: [
     { x: 1.5, y: 5.5 },
     { x: 16.5, y: 6 },
+    { x: 9, y: 1.5 },
+    { x: 9, y: 10.5 },
   ],
 };
 
 // "Bathroom Brawl": tiny and cluttered. A shower stall and a bathtub in
 // opposite corners, a vanity, a toilet and two laundry baskets leave little
 // room, so rounds are close-range and frantic. Each half mirrors the other
-// (turned around), so neither spawn has better cover.
+// (turned around), and so do the spawns, two by two.
 export const BATHROOM_BRAWL: MapData = {
   name: 'Bathroom Brawl',
   width: 13,
@@ -52,6 +54,8 @@ export const BATHROOM_BRAWL: MapData = {
   spawns: [
     { x: 1.5, y: 3 },
     { x: 11.5, y: 6 },
+    { x: 7.5, y: 1.5 },
+    { x: 5.5, y: 7.5 },
   ],
 };
 
@@ -85,6 +89,9 @@ export const THE_OFFICE: MapData = {
   spawns: [
     { x: 2, y: 13.5 },
     { x: 24, y: 2 },
+    // Inside the manager's office and the meeting room.
+    { x: 22.5, y: 13.5 },
+    { x: 3.5, y: 2.5 },
   ],
 };
 
@@ -110,6 +117,8 @@ export const LIGHTS_OUT: MapData = {
   spawns: [
     { x: 1.5, y: 8 },
     { x: 22.5, y: 8 },
+    { x: 6, y: 1.5 },
+    { x: 18, y: 14.5 },
   ],
 };
 

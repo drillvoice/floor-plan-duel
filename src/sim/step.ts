@@ -19,14 +19,26 @@ import {
   scheduleNextPowerUp,
   updatePowerUps,
 } from './powerups';
-import type { Bullet, GameState, MapData, PlayerIndex, PlayerInput, PlayerState } from './types';
+import { MAX_PLAYERS, NO_INPUT, type Bullet, type GameState, type MapData, type PlayerIndex, type PlayerInput, type PlayerState } from './types';
 import { add, closestPointOnSegment, dist, distPointSegment, dot, len, normalize, scale, sub, type Vec2 } from './vec';
 
 const EPS = 1e-9;
 
-// Given several maps, the match plays them in turn, one per round.
-export function createGame(maps: MapData | readonly MapData[], seed: number, cfg: Config = CONFIG): GameState {
-  const arenas = (Array.isArray(maps) ? maps : [maps]).map((m: MapData) => buildArena(m, cfg));
+// Given several maps, the match plays them in turn, one per round. Each map
+// needs a spawn point per player.
+export function createGame(
+  maps: MapData | readonly MapData[],
+  seed: number,
+  cfg: Config = CONFIG,
+  playerCount = 2,
+): GameState {
+  if (!Number.isInteger(playerCount) || playerCount < 2 || playerCount > MAX_PLAYERS) {
+    throw new Error(`A match needs 2 to ${MAX_PLAYERS} players, not ${playerCount}.`);
+  }
+  const arenas = (Array.isArray(maps) ? maps : [maps]).map((m: MapData) => {
+    if (m.spawns.length < playerCount) throw new Error(`${m.name} has ${m.spawns.length} spawn points, too few for ${playerCount} players.`);
+    return buildArena(m, cfg);
+  });
   const state: GameState = {
     cfg,
     baseCfg: cfg,
@@ -38,7 +50,7 @@ export function createGame(maps: MapData | readonly MapData[], seed: number, cfg
     phaseTime: 0,
     roundIndex: 0,
     roundTime: 0,
-    players: [newPlayer(), newPlayer()],
+    players: Array.from({ length: playerCount }, newPlayer),
     bullets: [],
     powerUps: [],
     nextPowerUpIn: 0,
@@ -57,8 +69,10 @@ function newPlayer(): PlayerState {
     pos: { x: 0, y: 0 },
     vel: { x: 0, y: 0 },
     facing: { x: 1, y: 0 },
+    target: null,
     lastMove: { x: 0, y: 0 },
     hits: 0,
+    out: false,
     roundWins: 0,
     nearMisses: 0,
     fireCooldown: 0,
@@ -70,10 +84,12 @@ function newPlayer(): PlayerState {
   };
 }
 
-// Players swap spawn points every round so neither slot keeps a spawn advantage.
+// A match uses the map's first spawn points, one per player, and players move
+// round them by one each round so no slot keeps a spawn advantage. With two
+// players they simply swap.
 export function spawnFor(state: GameState, player: PlayerIndex): Vec2 {
-  const swap = state.roundIndex % 2 === 1;
-  return state.arena.spawns[(player === 0) !== swap ? 0 : 1];
+  const n = state.players.length;
+  return state.arena.spawns[(player + state.roundIndex) % n];
 }
 
 function startRound(state: GameState): void {
@@ -86,11 +102,11 @@ function startRound(state: GameState): void {
   state.bullets = [];
   state.powerUps = [];
   scheduleNextPowerUp(state);
-  for (const i of [0, 1] as const) {
-    const p = state.players[i];
+  state.players.forEach((p, i) => {
     p.pos = { ...spawnFor(state, i) };
     p.vel = { x: 0, y: 0 };
     p.hits = 0;
+    p.out = false;
     p.fireCooldown = 0;
     p.dodgeCharges = 1;
     p.dodgeCooldown = 0;
@@ -98,7 +114,7 @@ function startRound(state: GameState): void {
     p.lastMove = { x: 0, y: 0 };
     p.effects = noEffects(); // round-long upgrades reset each round
     if (state.modifier) Object.assign(p.effects, MODIFIERS[state.modifier].effects);
-  }
+  });
   updateFacing(state);
   state.events.push({ type: 'roundStart', round: state.roundIndex, modifier: state.modifier });
 }
@@ -111,7 +127,8 @@ export function suddenDeathMultiplier(state: GameState): number {
   return Math.pow(1 + r.suddenDeathSpeedup, steps);
 }
 
-export function step(state: GameState, inputs: [PlayerInput, PlayerInput]): GameState {
+// One input per player, in player order.
+export function step(state: GameState, inputs: readonly PlayerInput[]): GameState {
   const cfg = state.cfg;
   const dt = 1 / cfg.tickRate;
   state.events = [];
@@ -132,9 +149,13 @@ export function step(state: GameState, inputs: [PlayerInput, PlayerInput]): Game
       if (!wasSuddenDeath && state.roundTime >= cfg.round.timeLimit - EPS) {
         state.events.push({ type: 'suddenDeath' });
       }
-      for (const i of [0, 1] as const) updatePlayer(state, i, inputs[i], dt);
+      state.players.forEach((p, i) => {
+        if (!p.out) updatePlayer(state, i, inputs[i] ?? NO_INPUT, dt);
+      });
       updateFacing(state);
-      for (const i of [0, 1] as const) tryFire(state, i, inputs[i]);
+      state.players.forEach((p, i) => {
+        if (!p.out) tryFire(state, i, inputs[i] ?? NO_INPUT);
+      });
       updateBullets(state, dt);
       updatePowerUps(state, dt);
       checkRoundEnd(state);
@@ -205,23 +226,41 @@ function updatePlayer(state: GameState, i: PlayerIndex, input: PlayerInput, dt: 
 }
 
 // A dodge dashes the way the player is moving; standing still, the way they
-// last moved; before they've moved at all, toward the opponent.
+// last moved; before they've moved at all, toward their target.
 export function dodgeDirection(p: PlayerState): Vec2 {
   return len(p.lastMove) > EPS ? p.lastMove : p.facing;
 }
 
-function updateFacing(state: GameState): void {
-  const [a, b] = state.players;
-  const d = normalize(sub(b.pos, a.pos));
-  if (d.x !== 0 || d.y !== 0) {
-    a.facing = d;
-    b.facing = scale(d, -1);
-  }
-  const los = hasLineOfSight(a.pos, b.pos, state.arena, state.cfg);
-  a.lineOfSight = b.lineOfSight = los;
+// Auto-aim targets the nearest opponent still in the round (ties go to the
+// lower-numbered player, so it never depends on anything but the state).
+export function nearestOpponent(state: GameState, i: PlayerIndex): PlayerIndex | null {
+  const me = state.players[i];
+  let best: PlayerIndex | null = null;
+  let bestD = Infinity;
+  state.players.forEach((p, j) => {
+    if (j === i || p.out) return;
+    const d = dist(me.pos, p.pos);
+    if (d < bestD - EPS) {
+      bestD = d;
+      best = j;
+    }
+  });
+  return best;
 }
 
-// Where auto-aim points: the opponent's position, led along their current
+function updateFacing(state: GameState): void {
+  state.players.forEach((p, i) => {
+    if (p.out) return;
+    p.target = nearestOpponent(state, i);
+    if (p.target === null) return;
+    const t = state.players[p.target];
+    const d = normalize(sub(t.pos, p.pos));
+    if (d.x !== 0 || d.y !== 0) p.facing = d;
+    p.lineOfSight = hasLineOfSight(p.pos, t.pos, state.arena, state.cfg);
+  });
+}
+
+// Where auto-aim points: the target's position, led along their current
 // velocity by `aimLead` of the time a bullet takes to intercept them.
 export function aimPoint(shooterPos: Vec2, target: PlayerState, bulletSpeed: number, lead: number): Vec2 {
   if (lead <= 0) return target.pos;
@@ -250,8 +289,9 @@ export function aimPoint(shooterPos: Vec2, target: PlayerState, bulletSpeed: num
 function tryFire(state: GameState, i: PlayerIndex, input: PlayerInput): void {
   const cfg = state.cfg;
   const p = state.players[i];
-  if (!input.shoot || p.fireCooldown > EPS) return;
-  const opp = state.players[i === 0 ? 1 : 0];
+  if (!input.shoot || p.fireCooldown > EPS || p.target === null) return;
+  const target = p.target;
+  const opp = state.players[target];
   const speed = cfg.bullet.speed * bulletSpeedFactor(p.effects, state) * suddenDeathMultiplier(state);
   let dir = normalize(sub(aimPoint(p.pos, opp, speed, aimLeadFor(p.effects, cfg)), p.pos));
   if (dir.x === 0 && dir.y === 0) dir = p.facing;
@@ -259,6 +299,7 @@ function tryFire(state: GameState, i: PlayerIndex, input: PlayerInput): void {
   const bullet: Bullet = {
     id: state.nextId++,
     owner: i,
+    target,
     pos: start,
     vel: scale(dir, speed),
     age: 0,
@@ -278,23 +319,30 @@ function updateBullets(state: GameState, dt: number): void {
   const wallClear = cfg.map.wallThickness / 2;
   const survivors: Bullet[] = [];
   for (const b of state.bullets) {
-    const target = state.players[b.owner === 0 ? 1 : 0];
-    const targetIndex: PlayerIndex = b.owner === 0 ? 1 : 0;
+    // Near misses are judged against the player it was aimed at, but it hits
+    // whichever opponent it touches first.
+    const targetIndex = b.target;
+    const target = state.players[targetIndex];
     // Sub-step along the path so fast bullets can't skip past walls or players.
     const steps = Math.max(1, Math.ceil((len(b.vel) * dt) / 0.1));
-    const hitRadius = hitRadiusFor(target, cfg) + b.radius;
     let alive = true;
     for (let s = 0; s < steps && alive; s++) {
       b.pos = add(b.pos, scale(b.vel, dt / steps));
       const wall = state.arena.walls.find((w) => distPointSegment(b.pos, w.a, w.b) < b.radius + wallClear);
-      const gap = dist(b.pos, target.pos) - hitRadius;
-      if (gap < 0) {
-        if (target.effects.shield > EPS) {
-          target.effects.shield = 0;
-          state.events.push({ type: 'shieldBlock', player: targetIndex, pos: { ...b.pos } });
+      const gap = dist(b.pos, target.pos) - hitRadiusFor(target, cfg) - b.radius;
+      const struck = state.players.findIndex(
+        (p, j) => j !== b.owner && !p.out && dist(b.pos, p.pos) < hitRadiusFor(p, cfg) + b.radius,
+      );
+      if (struck >= 0) {
+        const victim = state.players[struck];
+        if (victim.effects.shield > EPS) {
+          victim.effects.shield = 0;
+          state.events.push({ type: 'shieldBlock', player: struck, pos: { ...b.pos } });
         } else {
-          target.hits++;
-          state.events.push({ type: 'hit', player: targetIndex, pos: { ...b.pos }, hits: target.hits });
+          victim.hits++;
+          state.events.push({ type: 'hit', player: struck, pos: { ...b.pos }, hits: victim.hits });
+          // Out of the round; a knockout still in flight can't land twice.
+          if (victim.hits >= cfg.round.hitsToLose) knockOut(victim);
         }
         alive = false;
       } else if (wall && b.bounces > 0) {
@@ -327,18 +375,28 @@ function updateBullets(state: GameState, dt: number): void {
 // A bullet that came within the near-miss margin of its target and didn't hit
 // counts once, when it passes them or dies.
 function checkNearMiss(state: GameState, b: Bullet, target: PlayerIndex): void {
-  if (b.nearMissed || b.closestGap >= state.cfg.nearMiss.margin) return;
+  if (b.nearMissed || b.closestGap >= state.cfg.nearMiss.margin || state.players[target].out) return;
   b.nearMissed = true;
   state.players[target].nearMisses++;
   state.events.push({ type: 'nearMiss', player: target, pos: { ...b.pos } });
 }
 
+function knockOut(p: PlayerState): void {
+  p.out = true;
+  p.dash = null;
+  p.vel = { x: 0, y: 0 };
+  p.target = null;
+  p.lineOfSight = false;
+}
+
+// The round ends when one player is left standing. If the last ones are
+// knocked out on the same tick, it's a draw and is replayed.
 function checkRoundEnd(state: GameState): void {
   const cfg = state.cfg;
-  const out = state.players.map((p) => p.hits >= cfg.round.hitsToLose);
-  if (!out[0] && !out[1]) return;
-  // Both knocked out on the same tick: the round is a draw and is replayed.
-  const winner: PlayerIndex | null = out[0] && out[1] ? null : out[0] ? 1 : 0;
+  for (const p of state.players) if (!p.out && p.hits >= cfg.round.hitsToLose) knockOut(p);
+  const standing = state.players.flatMap((p, i) => (p.out ? [] : [i]));
+  if (standing.length > 1) return;
+  const winner: PlayerIndex | null = standing.length === 1 ? standing[0] : null;
   state.lastRoundWinner = winner;
   state.events.push({ type: 'roundEnd', winner });
   state.phaseTime = 0;

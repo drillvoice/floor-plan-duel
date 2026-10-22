@@ -45,51 +45,72 @@ document.addEventListener('fullscreenchange', () => {
   fullscreenButton.title = document.fullscreenElement ? 'Exit full screen (B)' : 'Full screen (B)';
 });
 
-// Each slot is a human on the keyboard or a bot at some difficulty.
-type Slot = 'human' | Difficulty;
-const SLOT_ORDER: Slot[] = ['human', 'easy', 'normal', 'hard'];
+// There are four seats, P1-P4. P1 and P2 are a human on the keyboard or a bot
+// at some difficulty; P3 and P4 have no keys, so they're a bot or nobody
+// ('off'). A phone in a seat plays it whatever it's set to, so up to four
+// people can play on phones.
+type Slot = 'human' | 'off' | Difficulty;
+const SLOT_ORDERS: Slot[][] = [
+  ['human', 'easy', 'normal', 'hard'],
+  ['human', 'easy', 'normal', 'hard'],
+  ['off', 'easy', 'normal', 'hard'],
+  ['off', 'easy', 'normal', 'hard'],
+];
 const SLOTS_KEY = 'fpd.slots';
 
-function loadSlots(): [Slot, Slot] {
+// Saves from before four seats hold just P1 and P2.
+function loadSlots(): Slot[] {
+  const slots = SLOT_ORDERS.map((order) => order[0]);
   try {
     const saved = JSON.parse(localStorage.getItem(SLOTS_KEY) ?? 'null');
-    if (Array.isArray(saved) && saved.length === 2 && saved.every((s) => SLOT_ORDER.includes(s))) return saved as [Slot, Slot];
+    if (Array.isArray(saved)) {
+      saved.slice(0, slots.length).forEach((s, i) => {
+        if (SLOT_ORDERS[i].includes(s)) slots[i] = s;
+      });
+    }
   } catch {
     // Storage unavailable or corrupt: fall back to two humans.
   }
-  return ['human', 'human'];
+  return slots;
 }
 
 const slots = loadSlots();
 
 // Phones as controllers. The room opens the first time the phone screen is
-// shown; after that, a side with a phone on it is played from the phone.
+// shown; after that, a seat with a phone on it is played from the phone.
 const clock = () => performance.now() / 1000;
 const phones = new PhoneHost(clock);
-const phonePlayer = new PhonePlayer(phones.room, clock);
 
-let inputs: [InputSource, InputSource] = makeInputs(0);
-
-function makeInputs(seed: number): [InputSource, InputSource] {
-  const make = (slot: Slot, i: 0 | 1): InputSource =>
-    phones.room.phoneIn(i)
-      ? phonePlayer
-      : slot === 'human'
-        ? new KeyboardPlayer(keyboard, i === 0 ? KEY_BINDINGS.p1 : KEY_BINDINGS.p2)
-        : new BotPlayer(slot, seed * 2 + i + 1);
-  return [make(slots[0], 0), make(slots[1], 1)];
+// The seats in the next match: P1 and P2 always, P3 and P4 when a bot or a
+// phone is in them. Players in the sim are numbered in seat order, so
+// `seats[i]` is the seat of player i.
+function activeSeats(): number[] {
+  return slots.flatMap((slot, seat) => (seat < 2 || slot !== 'off' || phones.room.phoneIn(seat) ? [seat] : []));
 }
 
-// Each side's look and name, from its phone when it has one.
-function sideLooks(): [string, string] {
-  return [phones.room.phoneIn(0)?.look ?? looks[0], phones.room.phoneIn(1)?.look ?? looks[1]];
-}
-function sideNames(): [string, string] {
-  return [phones.room.phoneIn(0)?.name || 'P1', phones.room.phoneIn(1)?.name || 'P2'];
+let seats: number[] = [0, 1];
+let inputs: InputSource[] = makeInputs(0);
+
+function makeInputs(seed: number): InputSource[] {
+  return seats.map((seat) => {
+    if (phones.room.phoneIn(seat)) return new PhonePlayer(phones.room, clock, seat);
+    const slot = slots[seat];
+    if (slot === 'human') return new KeyboardPlayer(keyboard, seat === 0 ? KEY_BINDINGS.p1 : KEY_BINDINGS.p2);
+    return new BotPlayer(slot === 'off' ? 'normal' : slot, seed * 4 + seat + 1);
+  });
 }
 
-function cycleSlot(i: 0 | 1): void {
-  slots[i] = SLOT_ORDER[(SLOT_ORDER.indexOf(slots[i]) + 1) % SLOT_ORDER.length];
+// Each seat's look and name, from its phone when it has one.
+function seatLook(seat: number): string {
+  return phones.room.phoneIn(seat)?.look ?? looks[seat];
+}
+function seatName(seat: number): string {
+  return phones.room.phoneIn(seat)?.name || `P${seat + 1}`;
+}
+
+function cycleSlot(i: number): void {
+  const order = SLOT_ORDERS[i];
+  slots[i] = order[(order.indexOf(slots[i]) + 1) % order.length];
   try {
     localStorage.setItem(SLOTS_KEY, JSON.stringify(slots));
   } catch {
@@ -188,7 +209,8 @@ const phoneLobby = new PhoneLobby(phones, {
     phoneLobby.close();
     screen = { kind: 'title' };
   },
-  fallback: (i) => (slots[i] === 'human' ? 'Human (keyboard)' : `Bot · ${slots[i][0].toUpperCase()}${slots[i].slice(1)}`),
+  fallback: (i) =>
+    slots[i] === 'off' ? null : slots[i] === 'human' ? 'Human (keyboard)' : `Bot · ${slots[i][0].toUpperCase()}${slots[i].slice(1)}`,
   colors: COLORS.players,
 });
 
@@ -212,7 +234,7 @@ phones.onEvent = (e) => {
   } else if (screen.kind === 'match' && screen.state.phase !== 'matchOver') {
     // A pause button, or a phone dropping out mid-match: pause until it's back.
     if (e.type === 'pause') screen.paused = !screen.paused;
-    else if (inputs[e.slot] === phonePlayer) screen.paused = true;
+    else if (inputs.some((input) => input instanceof PhonePlayer && input.slot === e.slot)) screen.paused = true;
   }
 };
 
@@ -241,8 +263,8 @@ function openEditor(map: MapData): void {
 
 interface HotseatMatch {
   roundsToWin: number;
-  looks: [string, string];
-  names: [string, string];
+  looks: string[];
+  names: string[];
 }
 
 function startMatch(map: MapData, from: MatchFrom = 'title', hotseat?: HotseatMatch): void {
@@ -251,18 +273,22 @@ function startMatch(map: MapData, from: MatchFrom = 'title', hotseat?: HotseatMa
   let cfg = { ...CONFIG, modifiers: { ...CONFIG.modifiers, enabled: modifiersOn } };
   if (hotseat) {
     // Hotseat is always two people on the keyboard, with their own names and looks.
+    seats = [0, 1];
     inputs = [new KeyboardPlayer(keyboard, KEY_BINDINGS.p1), new KeyboardPlayer(keyboard, KEY_BINDINGS.p2)];
     cfg = { ...cfg, round: { ...cfg.round, roundsToWin: hotseat.roundsToWin } };
     renderer.looks = hotseat.looks;
     renderer.names = hotseat.names;
     renderer.matchOverHint = 'Enter or Esc: back to the hotseat line-up';
   } else {
+    seats = activeSeats();
     inputs = makeInputs(seed);
-    renderer.looks = sideLooks();
-    renderer.names = sideNames();
+    renderer.looks = seats.map(seatLook);
+    renderer.names = seats.map(seatName);
     renderer.matchOverHint = 'Enter for a rematch · Esc for title';
   }
-  screen = { kind: 'match', state: createGame(matchMaps(map, from), seed, cfg), map, paused: false, from, recorded: false };
+  renderer.colors = seats.map((seat) => COLORS.players[seat]);
+  const state = createGame(matchMaps(map, from), seed, cfg, inputs.length);
+  screen = { kind: 'match', state, map, paused: false, from, recorded: false };
   keyboard.clear();
   music.start();
 }
@@ -295,6 +321,8 @@ keyboard.onPress((code) => {
     if (code === 'Enter' || code === 'Space') startMatch(selectedMap());
     else if (code === 'Digit1') cycleSlot(0);
     else if (code === 'Digit2') cycleSlot(1);
+    else if (code === 'Digit3') cycleSlot(2);
+    else if (code === 'Digit4') cycleSlot(3);
     else if (code === KEY_BINDINGS.p1.dodge || code === KEY_BINDINGS.p2.dodge) {
       const i = code === KEY_BINDINGS.p1.dodge ? 0 : 1;
       looks[i] = cycleLook(looks[i], 1);
@@ -362,10 +390,10 @@ function frame(now: number): void {
 
   if (screen.kind === 'title') {
     accumulator = 0;
-    renderer.looks = sideLooks();
-    const labels = ([0, 1] as const).map((i) => {
-      const phone = phones.room.phoneIn(i);
-      return phone ? `📱 ${phone.name || 'Phone'}` : slots[i];
+    renderer.looks = slots.map((_, seat) => seatLook(seat));
+    const labels = slots.map((slot, seat) => {
+      const phone = phones.room.phoneIn(seat);
+      return phone ? `📱 ${phone.name || 'Phone'}` : slot;
     });
     renderer.drawTitle((code) => keyboard.isHeld(code), labels, selectedMap().name, availableMaps().length, modifiersOn, rotationOn);
   } else if (screen.kind === 'editor') {
@@ -385,16 +413,19 @@ function frame(now: number): void {
       while (accumulator >= TICK) {
         accumulator -= TICK;
         const s = match.state;
-        step(s, [inputs[0].sample(s, 0), inputs[1].sample(s, 1)]);
+        step(s, inputs.map((input, i) => input.sample(s, i)));
         renderer.handleEvents(s.events, s);
         for (const e of s.events) {
-          if (e.type === 'hit' && inputs[e.player] === phonePlayer) {
-            phones.room.buzz(e.player);
+          const input = e.type === 'hit' ? inputs[e.player] : null;
+          if (input instanceof PhonePlayer) {
+            phones.room.buzz(input.slot);
             phones.nudge();
           }
         }
         sound.handleEvents(s.events, s);
-        if (s.events.some((e) => e.type === 'hit' && e.hits >= s.cfg.round.hitsToLose)) slowmo = SLOWMO_DURATION;
+        // Slow motion for the knockout that ends the round; other hits
+        // (including knockouts with players still standing) just thump.
+        if (s.events.some((e) => e.type === 'roundEnd')) slowmo = SLOWMO_DURATION;
         else if (s.events.some((e) => e.type === 'hit')) hitstop = HITSTOP;
         else if (s.events.some((e) => e.type === 'shieldBlock')) hitstop = BLOCKSTOP;
         if (hitstop > 0) {
@@ -419,7 +450,8 @@ function frame(now: number): void {
         music.stop();
         // A finished hotseat match goes on the scoreboard (an abandoned one doesn't).
         if (match.from === 'hotseat' && !match.recorded && s.matchWinner !== null) {
-          const w = s.matchWinner;
+          // Hotseat is always 1v1.
+          const w = s.matchWinner as 0 | 1;
           lobby.record(w, [s.players[w].roundWins, s.players[w === 0 ? 1 : 0].roundWins]);
           match.recorded = true;
         }

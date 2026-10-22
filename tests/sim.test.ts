@@ -251,7 +251,7 @@ describe('near misses', () => {
     const s = playing();
     placePlayer(s, 0, { x: 4, y: 4 });
     placePlayer(s, 1, { x: 15, y: 12 });
-    s.bullets.push({ id: 900, owner: 0, pos: { x: 13, y: 12 + offset }, vel: { x: 8, y: 0 }, age: 0, lifetime: 1, radius: 0.15, bounces: 0, closestGap: Infinity, nearMissed: false });
+    s.bullets.push({ id: 900, owner: 0, target: 1, pos: { x: 13, y: 12 + offset }, vel: { x: 8, y: 0 }, age: 0, lifetime: 1, radius: 0.15, bounces: 0, closestGap: Infinity, nearMissed: false });
     let nearMisses = 0;
     for (let t = 0; t < 60; t++) {
       step(s, [NO_INPUT, NO_INPUT]);
@@ -281,7 +281,7 @@ describe('near misses', () => {
     const s = playing();
     placePlayer(s, 0, { x: 8, y: 4 });
     placePlayer(s, 1, { x: 12.7, y: 7.5 }); // pressed against the far side of the wall
-    s.bullets.push({ id: 901, owner: 0, pos: { x: 10, y: 7.5 }, vel: { x: 8, y: 0 }, age: 0, lifetime: 1, radius: 0.15, bounces: 0, closestGap: Infinity, nearMissed: false });
+    s.bullets.push({ id: 901, owner: 0, target: 1, pos: { x: 10, y: 7.5 }, vel: { x: 8, y: 0 }, age: 0, lifetime: 1, radius: 0.15, bounces: 0, closestGap: Infinity, nearMissed: false });
     const events: string[] = [];
     for (let t = 0; t < 30; t++) {
       step(s, [NO_INPUT, NO_INPUT]);

@@ -34,6 +34,15 @@ describe('map storage', () => {
     expect(listSavedMaps().map((m) => m.id)).toEqual([b.id]);
   });
 
+  it('gives maps saved with two spawns four, once', () => {
+    const old = { ...THE_FLAT, id: 'map-old', spawns: THE_FLAT.spawns.slice(0, 2) };
+    localStorage.setItem('fpd.maps', JSON.stringify([old]));
+    const [map] = listSavedMaps();
+    expect(map.spawns).toHaveLength(4);
+    expect(map.spawns.slice(0, 2)).toEqual(old.spawns);
+    expect(JSON.parse(localStorage.getItem('fpd.maps')!)[0].spawns).toEqual(map.spawns);
+  });
+
   it('recovers the unsaved draft kept by older versions', () => {
     localStorage.setItem('fpd.editorDraft', JSON.stringify({ ...THE_FLAT, name: 'Lost map' }));
     const maps = listSavedMaps();

@@ -8,7 +8,7 @@ const EPS = 1e-9;
 
 // Round-long upgrades stack; everything else is a timer.
 export const STACKING: ReadonlySet<PowerUpKind> = new Set(['swiftShot', 'longShot', 'triggerHappy', 'fleetFoot', 'spareDodge']);
-// Curses land on the opponent of whoever picks them up.
+// Curses land on every opponent still in the round.
 export const ON_OPPONENT: ReadonlySet<PowerUpKind> = new Set(['molasses', 'topsyTurvy', 'bigTarget']);
 
 export const noEffects = (): Effects => Object.fromEntries(POWER_UP_KINDS.map((k) => [k, 0])) as Effects;
@@ -72,10 +72,8 @@ export function updatePowerUps(state: GameState, dt: number): void {
       kept.push(pu);
       continue;
     }
-    const taker = ([0, 1] as const).find(
-      (i) => dist(state.players[i].pos, pu.pos) < state.cfg.player.radius + pc.radius,
-    );
-    if (taker !== undefined) {
+    const taker = state.players.findIndex((p) => !p.out && dist(p.pos, pu.pos) < state.cfg.player.radius + pc.radius);
+    if (taker >= 0) {
       applyPowerUp(state, taker, pu.kind);
       state.events.push({ type: 'pickup', player: taker, kind: pu.kind, pos: { ...pu.pos } });
       continue;
@@ -97,7 +95,7 @@ function spawnPowerUp(state: GameState): void {
   for (let i = 0; i < grid.open.length; i++) {
     if (!grid.open[i] || grid.clearance[i] < pc.minWallDistance) continue;
     const c = cellCenter(grid, i);
-    if (state.players.some((p) => dist(p.pos, c) < pc.minPlayerDistance)) continue;
+    if (state.players.some((p) => !p.out && dist(p.pos, c) < pc.minPlayerDistance)) continue;
     if (state.powerUps.some((p) => dist(p.pos, c) < pc.minPowerUpDistance)) continue;
     candidates.push(i);
   }
@@ -132,7 +130,11 @@ export function applyPowerUp(state: GameState, player: PlayerIndex, kind: PowerU
     if (kind === 'spareDodge') me.dodgeCharges++;
     return;
   }
-  const target = ON_OPPONENT.has(kind) ? state.players[player === 0 ? 1 : 0] : me;
+  const targets = ON_OPPONENT.has(kind) ? opponentsOf(state, player) : [me];
   // Never cuts short an effect that lasts longer (e.g. one a round modifier gave).
-  target.effects[kind] = Math.max(target.effects[kind], (pc[kind] as { duration: number }).duration);
+  for (const t of targets) t.effects[kind] = Math.max(t.effects[kind], (pc[kind] as { duration: number }).duration);
+}
+
+export function opponentsOf(state: GameState, player: PlayerIndex): PlayerState[] {
+  return state.players.filter((p, i) => i !== player && !p.out);
 }

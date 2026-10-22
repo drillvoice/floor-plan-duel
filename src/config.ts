@@ -127,7 +127,7 @@ export const CONFIG = {
     // cooldown (other fire-rate power-ups don't change it), `width` is how
     // thick the beam is for hits, and `flashTime` is how long it stays on
     // screen after firing.
-    laser: { duration: 5, chargeTime: 0.4, range: 10, cooldown: 1.2, width: 0.2, flashTime: 0.15 },
+    laser: { duration: 5, chargeTime: 0.4, range: 10, cooldown: 1, width: 0.2, flashTime: 0.15 },
     molasses: { speedMultiplier: 0.6, duration: 4 },
     // Opponent's movement (and so their dodges) reversed.
     topsyTurvy: { duration: 3 },

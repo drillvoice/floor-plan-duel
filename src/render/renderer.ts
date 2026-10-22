@@ -1,70 +1,18 @@
-// Draws game state onto a canvas. Reads state and events; never changes them.
+// Draws game state onto a canvas: the arena, players, bullets, power-ups and
+// effects, with the HUD (hud.ts) and overlays (overlay.ts) on top, and the
+// title screen (title.ts). Reads state and events; never changes them.
 
-import { KEY_BINDINGS, type PlayerKeys } from '../config';
 import { fireCooldownFor, hitRadiusFor, maxDodgeCharges, ON_OPPONENT, STACKING } from '../sim/powerups';
-import { dodgeDirection, suddenDeathMultiplier } from '../sim/step';
-import { MODIFIER_IDS, POWER_UP_KINDS } from '../config';
-import { MODIFIERS } from '../sim/modifiers';
-import { POWER_UP_CATEGORY, type Arena, type GameEvent, type GameState, type PlayerIndex, type PowerUp, type PowerUpKind } from '../sim/types';
-import { CATEGORY_COLORS, drawPowerUpGlyph, powerUpColor } from './icons';
-import { drawLook } from './looks';
+import { dodgeDirection } from '../sim/step';
+import type { Arena, GameEvent, GameState, PlayerIndex, PowerUp, PowerUpKind } from '../sim/types';
 import { add, closestPointOnSegment, distPointSegment, scale, type Vec2 } from '../sim/vec';
-
-export const COLORS = {
-  background: '#16181f',
-  floor: '#262a35',
-  grid: 'rgba(255,255,255,0.035)',
-  wall: '#e9e4d8',
-  text: '#f2efe8',
-  muted: '#8b90a0',
-  players: ['#7ed957', '#c084fc'] as const,
-};
-
-const PLAYER_NAMES = ['P1', 'P2'] as const;
-const TIMER_AMBER = '#ffb020';
-const TIMER_RED = '#ff4d4d';
-const HUD_HEIGHT = 64;
-const MARGIN = 24;
-// Each player's status sits in a column beside the arena. The arena leaves at
-// least this much room; on wide screens the columns take whatever is spare.
-const SIDE_MIN = 150;
-const SIDE_MAX = 260;
-const SIDE_GAP = 16;
-// Phone-only play: a slim HUD along the top and the arena filling the rest.
-const COMPACT_HUD = 34;
-const COMPACT_MARGIN = 6;
-// Overlay text is sized for this window height and shrinks on shorter ones.
-const COMPACT_UI_HEIGHT = 560;
-// Smallest window the title screen fits at full size.
-const TITLE_MIN_H = 540;
-const TITLE_MIN_W = 820;
-
-export interface ArenaLayout {
-  scale: number; // pixels per unit
-  origin: Vec2; // the arena's top-left corner on screen
-  sideW: number; // width of each player's status column (none when compact)
-}
-
-// Where the arena goes in a window. Normally it sits between the two
-// players' status columns; compact (phone-only) gives it the whole width.
-export function arenaLayout(width: number, height: number, arena: { width: number; height: number }, compact: boolean): ArenaLayout {
-  const { width: aw, height: ah } = arena;
-  if (compact) {
-    const availW = width - COMPACT_MARGIN * 2;
-    const availH = height - COMPACT_HUD - COMPACT_MARGIN * 2;
-    const scale = Math.max(4, Math.min(availW / aw, availH / ah));
-    return {
-      scale,
-      origin: { x: (width - aw * scale) / 2, y: COMPACT_HUD + COMPACT_MARGIN + (availH - ah * scale) / 2 },
-      sideW: 0,
-    };
-  }
-  const availW = width - (SIDE_MIN + SIDE_GAP * 2) * 2;
-  const availH = height - HUD_HEIGHT - MARGIN * 2;
-  const scale = Math.max(4, Math.min(availW / aw, availH / ah));
-  const origin = { x: (width - aw * scale) / 2, y: HUD_HEIGHT + MARGIN + (availH - ah * scale) / 2 };
-  return { scale, origin, sideW: Math.max(SIDE_MIN * 0.75, Math.min(SIDE_MAX, origin.x - SIDE_GAP * 2)) };
-}
+import { drawHud } from './hud';
+import { CATEGORY_COLORS, drawPowerUpGlyph, powerUpColor } from './icons';
+import { arenaLayout, toScreen, type MatchView } from './layout';
+import { drawLook } from './looks';
+import { drawOverlay, drawSuddenDeathBanner } from './overlay';
+import { COLORS, hexAlpha, NEAR_MISS_COLOR } from './theme';
+import { drawTitle } from './title';
 
 interface Particle {
   pos: Vec2;
@@ -91,7 +39,6 @@ interface Callout {
 
 const CALLOUT_LIFE = 1.4;
 const NEAR_MISS_GLOW = 0.3;
-const NEAR_MISS_COLOR = '#ffe066';
 const NEAR_MISS_TEXT = ['Close!', 'Whew!', 'Too close!', 'Not today!', 'Missed me!'];
 
 // What a pickup says over the player who took it, and over the opponent for curses.
@@ -110,44 +57,6 @@ const PICKUP_TEXT: Record<PowerUpKind, { self: string; victim?: string }> = {
   topsyTurvy: { self: 'Flipped their controls!', victim: 'Controls flipped!' },
   bigTarget: { self: 'Made them huge!', victim: 'Big target!' },
 };
-
-// Short power-up names for the side columns. Curses are named as the
-// player carrying them feels them.
-const HUD_NAMES: Record<PowerUpKind, string> = {
-  swiftShot: 'Fast bullets',
-  longShot: 'Long range',
-  triggerHappy: 'Fire rate',
-  fleetFoot: 'Speed',
-  spareDodge: 'Extra dodge',
-  shield: 'Shield',
-  rapidFire: 'Rapid fire',
-  bouncer: 'Bouncy',
-  ghost: 'Ghost',
-  leadShot: 'Sharpshooter',
-  molasses: 'Slowed',
-  topsyTurvy: 'Flipped',
-  bigTarget: 'Big target',
-};
-
-// The round-modifier reel spins through names, slowing down, and lands on
-// the round's modifier. These are the times (s into the countdown) at which
-// it moves on to the next name; the last one is where it lands.
-const REEL_STEPS: number[] = (() => {
-  const times: number[] = [];
-  let t = 0;
-  for (let gap = 0.05; t < 1.3; gap *= 1.17) times.push((t += gap));
-  return times;
-})();
-
-// Where the reel is `t` seconds into the countdown: how many names it has
-// moved through, and whether it has landed.
-export function modifierReel(t: number): { step: number; landed: boolean } {
-  let step = 0;
-  while (step < REEL_STEPS.length && t >= REEL_STEPS[step]) step++;
-  return { step, landed: step === REEL_STEPS.length };
-}
-
-const MODIFIER_COLOR = '#ffd23f';
 
 // Lights Out maps: how far each light reaches (units) and how bright it is.
 const DARKNESS = 'rgba(4,5,9,0.95)';
@@ -177,9 +86,8 @@ export class Renderer {
   private ctx: CanvasRenderingContext2D;
   private width = 0;
   private height = 0;
-  private scale = 1;
-  private origin = { x: 0, y: 0 };
-  private sideW = SIDE_MIN;
+  // Where the arena is on screen, worked out at the start of each match frame.
+  private view: MatchView = { scale: 1, origin: { x: 0, y: 0 }, sideW: 0, width: 0, height: 0, compact: false, looks: ['', ''], names: ['', ''] };
   private hitFlash = [0, 0];
   private nearMissGlow = [0, 0];
   private trails: Trail[] = [];
@@ -358,16 +266,12 @@ export class Renderer {
   }
 
   private layout(state: GameState): void {
-    ({ scale: this.scale, origin: this.origin, sideW: this.sideW } = arenaLayout(this.width, this.height, state.arena, this.compact));
-  }
-
-  // How much to shrink overlay text: 1 except on a short phone screen.
-  private get ui(): number {
-    return this.compact ? Math.min(1, this.height / COMPACT_UI_HEIGHT) : 1;
+    const { width, height, compact, looks, names } = this;
+    this.view = { ...arenaLayout(width, height, state.arena, compact), width, height, compact, looks, names };
   }
 
   private toScreen(p: Vec2): Vec2 {
-    return { x: this.origin.x + p.x * this.scale, y: this.origin.y + p.y * this.scale };
+    return toScreen(this.view, p);
   }
 
   drawMatch(state: GameState, paused: boolean): void {
@@ -377,7 +281,7 @@ export class Renderer {
     ctx.fillRect(0, 0, this.width, this.height);
     ctx.save();
     if (this.shake > 0) {
-      const mag = this.shake * this.shake * this.scale * 0.5;
+      const mag = this.shake * this.shake * this.view.scale * 0.5;
       ctx.translate((Math.random() * 2 - 1) * mag, (Math.random() * 2 - 1) * mag);
     }
     this.drawArena(state);
@@ -393,40 +297,27 @@ export class Renderer {
       ctx.fillStyle = `rgba(255,255,255,${this.screenFlash * 0.8})`;
       ctx.fillRect(0, 0, this.width, this.height);
     }
-    this.drawHud(state);
-    if (this.suddenDeathBanner > 0 && state.phase === 'playing') {
-      const a = Math.min(1, this.suddenDeathBanner / 0.5);
-      const u = this.ui;
-      ctx.fillStyle = `rgba(10,11,15,${0.6 * a})`;
-      ctx.fillRect(0, this.height / 2 - 60 * u, this.width, 124 * u);
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillStyle = hexAlpha(TIMER_RED, a);
-      ctx.font = `900 ${64 * u}px system-ui, sans-serif`;
-      ctx.fillText('SUDDEN DEATH', this.width / 2, this.height / 2 - 10 * u);
-      ctx.fillStyle = `rgba(242,239,232,${a})`;
-      ctx.font = `600 ${20 * u}px system-ui, sans-serif`;
-      ctx.fillText('Bullets speed up every 5 seconds', this.width / 2, this.height / 2 + 36 * u);
-    }
-    this.drawOverlay(state, paused);
+    drawHud(ctx, this.view, state);
+    drawSuddenDeathBanner(ctx, this.view, state, this.suddenDeathBanner);
+    drawOverlay(ctx, this.view, state, paused, { paused: this.pausedHint, matchOver: this.matchOverHint });
   }
 
   private drawArena(state: GameState): void {
     const ctx = this.ctx;
     const { width: aw, height: ah } = state.arena;
-    const s = this.scale;
+    const s = this.view.scale;
     ctx.fillStyle = COLORS.floor;
-    ctx.fillRect(this.origin.x, this.origin.y, aw * s, ah * s);
+    ctx.fillRect(this.view.origin.x, this.view.origin.y, aw * s, ah * s);
     ctx.strokeStyle = COLORS.grid;
     ctx.lineWidth = 1;
     ctx.beginPath();
     for (let x = 1; x < aw; x++) {
-      ctx.moveTo(this.origin.x + x * s, this.origin.y);
-      ctx.lineTo(this.origin.x + x * s, this.origin.y + ah * s);
+      ctx.moveTo(this.view.origin.x + x * s, this.view.origin.y);
+      ctx.lineTo(this.view.origin.x + x * s, this.view.origin.y + ah * s);
     }
     for (let y = 1; y < ah; y++) {
-      ctx.moveTo(this.origin.x, this.origin.y + y * s);
-      ctx.lineTo(this.origin.x + aw * s, this.origin.y + y * s);
+      ctx.moveTo(this.view.origin.x, this.view.origin.y + y * s);
+      ctx.lineTo(this.view.origin.x + aw * s, this.view.origin.y + y * s);
     }
     ctx.stroke();
 
@@ -442,7 +333,7 @@ export class Renderer {
   // cached layer the size of the canvas.
   private wallsWithSplats(state: GameState): HTMLCanvasElement {
     const layer = (this.wallLayer ??= document.createElement('canvas'));
-    const key = `${this.canvas.width}x${this.canvas.height}:${this.origin.x},${this.origin.y},${this.scale}`;
+    const key = `${this.canvas.width}x${this.canvas.height}:${this.view.origin.x},${this.view.origin.y},${this.view.scale}`;
     if (key === this.wallLayerKey) return layer;
     this.wallLayerKey = key;
     layer.width = this.canvas.width;
@@ -451,7 +342,7 @@ export class Renderer {
     const dpr = this.canvas.width / this.width;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.strokeStyle = COLORS.wall;
-    ctx.lineWidth = state.cfg.map.wallThickness * this.scale;
+    ctx.lineWidth = state.cfg.map.wallThickness * this.view.scale;
     ctx.lineCap = 'round';
     ctx.beginPath();
     for (const w of state.arena.walls) {
@@ -468,8 +359,8 @@ export class Renderer {
       ctx.beginPath();
       for (const d of sp.dots) {
         const c = this.toScreen({ x: sp.pos.x + d.dx, y: sp.pos.y + d.dy });
-        ctx.moveTo(c.x + d.r * this.scale, c.y);
-        ctx.arc(c.x, c.y, d.r * this.scale, 0, Math.PI * 2);
+        ctx.moveTo(c.x + d.r * this.view.scale, c.y);
+        ctx.arc(c.x, c.y, d.r * this.view.scale, 0, Math.PI * 2);
       }
       ctx.fill();
     }
@@ -493,11 +384,11 @@ export class Renderer {
     ctx.setTransform(main.getTransform()); // includes screen shake
     ctx.globalCompositeOperation = 'source-over';
     ctx.fillStyle = DARKNESS;
-    ctx.fillRect(this.origin.x, this.origin.y, state.arena.width * this.scale, state.arena.height * this.scale);
+    ctx.fillRect(this.view.origin.x, this.view.origin.y, state.arena.width * this.view.scale, state.arena.height * this.view.scale);
     ctx.globalCompositeOperation = 'destination-out';
     const light = (pos: Vec2, reach: number, strength: number) => {
       const c = this.toScreen(pos);
-      const r = reach * this.scale;
+      const r = reach * this.view.scale;
       const grad = ctx.createRadialGradient(c.x, c.y, 0, c.x, c.y, r);
       grad.addColorStop(0, `rgba(0,0,0,${strength})`);
       grad.addColorStop(0.5, `rgba(0,0,0,${strength * 0.75})`);
@@ -533,7 +424,7 @@ export class Renderer {
         const t = c.age / CALLOUT_LIFE;
         const pop = Math.min(1, c.age / 0.12); // quick scale-in
         const at = this.toScreen(state.players[i].pos);
-        const y = at.y - state.cfg.player.radius * this.scale - 20 - t * 26 - (mine.length - 1 - n) * 22;
+        const y = at.y - state.cfg.player.radius * this.view.scale - 20 - t * 26 - (mine.length - 1 - n) * 22;
         ctx.globalAlpha = t < 0.7 ? 1 : 1 - (t - 0.7) / 0.3;
         ctx.save();
         ctx.translate(at.x, y);
@@ -555,7 +446,7 @@ export class Renderer {
       const c = this.toScreen(p.pos);
       ctx.fillStyle = hexAlpha(p.color, 1 - p.age / p.life);
       ctx.beginPath();
-      ctx.arc(c.x, c.y, p.size * this.scale, 0, Math.PI * 2);
+      ctx.arc(c.x, c.y, p.size * this.view.scale, 0, Math.PI * 2);
       ctx.fill();
     }
     for (const r of this.rings) {
@@ -564,7 +455,7 @@ export class Renderer {
       ctx.strokeStyle = hexAlpha(r.color, 1 - t);
       ctx.lineWidth = 3;
       ctx.beginPath();
-      ctx.arc(c.x, c.y, (0.5 + t * 1.5) * this.scale, 0, Math.PI * 2);
+      ctx.arc(c.x, c.y, (0.5 + t * 1.5) * this.view.scale, 0, Math.PI * 2);
       ctx.stroke();
     }
   }
@@ -579,7 +470,7 @@ export class Renderer {
       grad.addColorStop(0, 'rgba(255,255,255,0)');
       grad.addColorStop(1, hexAlpha(COLORS.players[t.player], 0.55 * life));
       ctx.strokeStyle = grad;
-      ctx.lineWidth = this.scale * 0.8 * life;
+      ctx.lineWidth = this.view.scale * 0.8 * life;
       ctx.lineCap = 'round';
       ctx.beginPath();
       ctx.moveTo(a.x, a.y);
@@ -603,7 +494,7 @@ export class Renderer {
     const p = this.toScreen(pos);
     ctx.fillStyle = hexAlpha(COLORS.players[owner], alpha);
     ctx.beginPath();
-    ctx.arc(p.x, p.y, radius * this.scale, 0, Math.PI * 2);
+    ctx.arc(p.x, p.y, radius * this.view.scale, 0, Math.PI * 2);
     ctx.fill();
     // Bouncy bullets get a blue rim.
     ctx.strokeStyle = bouncy ? hexAlpha(CATEGORY_COLORS.buff, alpha) : `rgba(255,255,255,${0.7 * alpha})`;
@@ -617,7 +508,7 @@ export class Renderer {
     const cfg = state.cfg;
     const c = this.toScreen(p.pos);
     // Drawn at hit size, so Big Target visibly grows.
-    const r = hitRadiusFor(p, cfg) * this.scale;
+    const r = hitRadiusFor(p, cfg) * this.view.scale;
     const color = COLORS.players[i];
     // A Ghost is see-through.
     ctx.save();
@@ -742,7 +633,7 @@ export class Renderer {
   private drawPowerUp(state: GameState, pu: PowerUp): void {
     const ctx = this.ctx;
     const c = this.toScreen(pu.pos);
-    const r = state.cfg.powerUps.radius * this.scale;
+    const r = state.cfg.powerUps.radius * this.view.scale;
     const color = powerUpColor(pu.kind);
     if (pu.telegraph > 0) {
       // Shimmering ring that tightens onto the spot before the item appears.
@@ -778,412 +669,12 @@ export class Renderer {
     ctx.stroke();
   }
 
-  private drawHud(state: GameState): void {
-    if (this.compact) {
-      this.drawCompactHud(state);
-      return;
-    }
-    const ctx = this.ctx;
-    const cfg = state.cfg;
-    ctx.textBaseline = 'middle';
-    for (const i of [0, 1] as const) this.drawSidePanel(state, i);
-
-    // Round timer: a number, plus a bar across the top of the arena that
-    // shrinks and turns amber, then red, as time runs out.
-    const left = cfg.round.timeLimit - state.roundTime;
-    const sudden = left <= 0;
-    const pulse = 0.55 + 0.45 * Math.abs(Math.sin(state.tick * 0.12));
-    const timerColor = sudden || left <= 10 ? TIMER_RED : left <= 30 ? TIMER_AMBER : COLORS.text;
-    const barY = this.origin.y - 14;
-    const barW = state.arena.width * this.scale;
-    ctx.fillStyle = 'rgba(255,255,255,0.08)';
-    ctx.fillRect(this.origin.x, barY, barW, 6);
-    ctx.globalAlpha = sudden || left <= 10 ? pulse : 1;
-    ctx.fillStyle = timerColor;
-    const frac = sudden ? 1 : Math.max(0, left / cfg.round.timeLimit);
-    ctx.fillRect(this.origin.x + (barW * (1 - frac)) / 2, barY, barW * frac, 6);
-    ctx.globalAlpha = 1;
-
-    ctx.textAlign = 'center';
-    ctx.fillStyle = timerColor;
-    ctx.font = '800 30px system-ui, sans-serif';
-    const label = sudden ? `SUDDEN DEATH ×${suddenDeathMultiplier(state).toFixed(2)}` : `${Math.ceil(left)}`;
-    ctx.fillText(label, this.width / 2, 24);
-    ctx.font = '500 13px system-ui, sans-serif';
-    ctx.fillStyle = COLORS.muted;
-    if (state.modifier && state.phase !== 'countdown') {
-      ctx.fillStyle = MODIFIER_COLOR;
-      ctx.font = '700 13px system-ui, sans-serif';
-      ctx.fillText(`Round ${state.roundIndex + 1} · ${MODIFIERS[state.modifier].name}`, this.width / 2, 50);
-    } else {
-      ctx.fillText(`Round ${state.roundIndex + 1}`, this.width / 2, 50);
-    }
-  }
-
-  // Phone-only HUD: one slim row along the top. The timer sits in the
-  // middle; each player's look, name, health, round wins and power-ups run
-  // outwards from it, P2's mirroring P1's.
-  private drawCompactHud(state: GameState): void {
-    const ctx = this.ctx;
-    const cfg = state.cfg;
-    const cx = this.width / 2;
-    const mid = COMPACT_HUD / 2 + 1;
-    ctx.textBaseline = 'middle';
-
-    const left = cfg.round.timeLimit - state.roundTime;
-    const sudden = left <= 0;
-    const pulse = 0.55 + 0.45 * Math.abs(Math.sin(state.tick * 0.12));
-    const timerColor = sudden || left <= 10 ? TIMER_RED : left <= 30 ? TIMER_AMBER : COLORS.text;
-    const barY = this.origin.y - 4;
-    const barW = state.arena.width * this.scale;
-    ctx.fillStyle = 'rgba(255,255,255,0.08)';
-    ctx.fillRect(this.origin.x, barY, barW, 3);
-    ctx.globalAlpha = sudden || left <= 10 ? pulse : 1;
-    ctx.fillStyle = timerColor;
-    const frac = sudden ? 1 : Math.max(0, left / cfg.round.timeLimit);
-    ctx.fillRect(this.origin.x + (barW * (1 - frac)) / 2, barY, barW * frac, 3);
-    ctx.globalAlpha = 1;
-
-    ctx.textAlign = 'center';
-    ctx.fillStyle = timerColor;
-    ctx.font = '800 18px system-ui, sans-serif';
-    ctx.fillText(sudden ? `SUDDEN ×${suddenDeathMultiplier(state).toFixed(2)}` : `${Math.ceil(left)}`, cx, 12);
-    const modifier = state.modifier && state.phase !== 'countdown' ? MODIFIERS[state.modifier].name : '';
-    ctx.fillStyle = modifier ? MODIFIER_COLOR : COLORS.muted;
-    ctx.font = `${modifier ? 700 : 500} 10px system-ui, sans-serif`;
-    const roundLabel = modifier ? `Round ${state.roundIndex + 1} · ${modifier}` : `Round ${state.roundIndex + 1}`;
-    ctx.fillText(roundLabel, cx, 28);
-    const centreHalf = Math.max(48, ctx.measureText(roundLabel).width / 2 + 10);
-
-    for (const i of [0, 1] as const) {
-      const p = state.players[i];
-      const dir = i === 0 ? -1 : 1;
-      let x = cx + dir * centreHalf;
-      // Claims the next `w` pixels outwards and returns their centre.
-      const next = (w: number, gap = 8) => {
-        const c = x + (dir * w) / 2;
-        x += dir * (w + gap);
-        return c;
-      };
-
-      const wins = cfg.round.roundsToWin;
-      const winR = 4;
-      const winsW = wins * winR * 2 + (wins - 1) * 4;
-      // Won rounds fill in from the middle of the HUD outwards.
-      const winsInner = next(winsW) - (dir * winsW) / 2;
-      ctx.strokeStyle = COLORS.text;
-      ctx.fillStyle = COLORS.text;
-      ctx.lineWidth = 1.5;
-      for (let n = 0; n < wins; n++) {
-        const wx = winsInner + dir * (winR + n * (winR * 2 + 4));
-        ctx.beginPath();
-        ctx.arc(wx, mid, winR, 0, Math.PI * 2);
-        if (n < p.roundWins) ctx.fill();
-        else ctx.stroke();
-      }
-
-      const hits = cfg.round.hitsToLose;
-      const pipD = 12;
-      const pipsW = hits * pipD + (hits - 1) * 4;
-      const pipsX = next(pipsW);
-      for (let h = 0; h < hits; h++) {
-        const alive = h < hits - p.hits;
-        const px = pipsX - pipsW / 2 + pipD / 2 + h * (pipD + 4);
-        ctx.beginPath();
-        ctx.arc(px, mid, pipD / 2 - 1, 0, Math.PI * 2);
-        if (alive) {
-          ctx.fillStyle = COLORS.players[i];
-          ctx.fill();
-        } else {
-          ctx.strokeStyle = 'rgba(255,255,255,0.25)';
-          ctx.lineWidth = 2;
-          ctx.stroke();
-        }
-      }
-
-      const name = this.names[i];
-      let size = 14;
-      ctx.font = `800 ${size}px system-ui, sans-serif`;
-      const nameW = Math.min(90, ctx.measureText(name).width);
-      size *= nameW / Math.max(1, ctx.measureText(name).width);
-      ctx.font = `800 ${size}px system-ui, sans-serif`;
-      ctx.fillStyle = COLORS.players[i];
-      ctx.textAlign = 'center';
-      ctx.fillText(name, next(nameW, 6), mid);
-
-      const r = 11;
-      const lookX = next(r * 2, 10);
-      ctx.fillStyle = COLORS.players[i];
-      ctx.beginPath();
-      ctx.arc(lookX, mid, r, 0, Math.PI * 2);
-      ctx.fill();
-      if (this.looks[i]) drawLook(ctx, this.looks[i], lookX, mid, r);
-
-      // Active power-ups, as far as the screen edge allows. Timed ones drain
-      // a ring; stacks show a count.
-      const iconR = 9;
-      for (const kind of POWER_UP_KINDS) {
-        const amount = p.effects[kind];
-        if (amount <= 0) continue;
-        if (dir < 0 ? x - iconR * 2 < 4 : x + iconR * 2 > this.width - 4) break;
-        const ix = next(iconR * 2, 7);
-        const color = CATEGORY_COLORS[POWER_UP_CATEGORY[kind]];
-        ctx.fillStyle = color;
-        ctx.beginPath();
-        ctx.arc(ix, mid, iconR, 0, Math.PI * 2);
-        ctx.fill();
-        drawPowerUpGlyph(ctx, kind, ix, mid, iconR * 1.2);
-        const duration = (cfg.powerUps[kind] as { duration?: number }).duration;
-        if (!STACKING.has(kind) && duration) {
-          ctx.strokeStyle = color;
-          ctx.lineWidth = 2;
-          ctx.beginPath();
-          ctx.arc(ix, mid, iconR + 3, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, amount / duration));
-          ctx.stroke();
-        } else if (STACKING.has(kind) && amount > 1) {
-          ctx.fillStyle = COLORS.text;
-          ctx.font = '800 9px system-ui, sans-serif';
-          ctx.fillText(`×${amount}`, ix + iconR * 0.8, mid + iconR);
-        }
-      }
-    }
-  }
-
-  // One player's status in the column beside the arena, sized to read at a
-  // glance: name, health, round wins, then active power-ups. P2's column is
-  // a mirror image of P1's.
-  private drawSidePanel(state: GameState, i: PlayerIndex): void {
-    const ctx = this.ctx;
-    const cfg = state.cfg;
-    const p = state.players[i];
-    const left = i === 0;
-    const dir = left ? 1 : -1;
-    const w = this.sideW;
-    const cx = left ? this.origin.x / 2 : this.width - this.origin.x / 2;
-    const outer = cx - (dir * w) / 2;
-    const u = Math.min(1.8, w / 140);
-    let y = this.origin.y;
-
-    // Look and name, shrunk to fit long hotseat names.
-    const r = 22 * u;
-    ctx.fillStyle = COLORS.players[i];
-    ctx.beginPath();
-    ctx.arc(cx, y + r, r, 0, Math.PI * 2);
-    ctx.fill();
-    if (this.looks[i]) drawLook(ctx, this.looks[i], cx, y + r, r);
-    y += r * 2 + 22 * u;
-    const name = this.names[i];
-    let size = 30 * u;
-    ctx.font = `800 ${size}px system-ui, sans-serif`;
-    const nameW = ctx.measureText(name).width;
-    if (nameW > w) size *= w / nameW;
-    ctx.font = `800 ${size}px system-ui, sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.fillText(name, cx, y);
-    y += 30 * u;
-
-    // Health: big pips, lost ones hollow.
-    const hits = cfg.round.hitsToLose;
-    const pipGap = 8 * u;
-    const pipD = Math.min(36 * u, (w - pipGap * (hits - 1)) / hits);
-    const rowW = hits * pipD + (hits - 1) * pipGap;
-    for (let h = 0; h < hits; h++) {
-      const alive = h < hits - p.hits;
-      const px = cx - rowW / 2 + pipD / 2 + h * (pipD + pipGap);
-      ctx.beginPath();
-      ctx.arc(px, y + pipD / 2, pipD / 2 - 1.5, 0, Math.PI * 2);
-      if (alive) {
-        ctx.fillStyle = COLORS.players[i];
-        ctx.fill();
-      } else {
-        ctx.strokeStyle = 'rgba(255,255,255,0.18)';
-        ctx.lineWidth = 3;
-        ctx.stroke();
-      }
-    }
-    y += pipD + 22 * u;
-
-    // Round wins.
-    const wins = cfg.round.roundsToWin;
-    const winR = 8 * u;
-    const winGap = 10 * u;
-    const winsW = wins * winR * 2 + (wins - 1) * winGap;
-    ctx.strokeStyle = COLORS.text;
-    ctx.fillStyle = COLORS.text;
-    ctx.lineWidth = 2;
-    for (let n = 0; n < wins; n++) {
-      ctx.beginPath();
-      ctx.arc(cx - winsW / 2 + winR + n * (winR * 2 + winGap), y, winR, 0, Math.PI * 2);
-      if (n < p.roundWins) ctx.fill();
-      else ctx.stroke();
-    }
-    y += winR + 12 * u;
-    ctx.fillStyle = COLORS.muted;
-    ctx.font = `500 ${12 * u}px system-ui, sans-serif`;
-    ctx.fillText('rounds', cx, y);
-    y += 30 * u;
-
-    // Active power-ups, one per row: icon at the outer edge, then stacks or
-    // seconds left with the name beneath. Timed ones drain a ring.
-    const iconR = 17 * u;
-    const rowH = iconR * 2 + 12 * u;
-    const iconX = outer + dir * iconR;
-    const textX = iconX + dir * (iconR + 10 * u);
-    for (const kind of POWER_UP_KINDS) {
-      const amount = p.effects[kind];
-      if (amount <= 0) continue;
-      if (y + rowH > this.height) break;
-      const iy = y + iconR;
-      const color = CATEGORY_COLORS[POWER_UP_CATEGORY[kind]];
-      ctx.fillStyle = color;
-      ctx.beginPath();
-      ctx.arc(iconX, iy, iconR, 0, Math.PI * 2);
-      ctx.fill();
-      drawPowerUpGlyph(ctx, kind, iconX, iy, iconR * 1.2);
-      const duration = (cfg.powerUps[kind] as { duration?: number }).duration;
-      if (!STACKING.has(kind) && duration) {
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 3 * u;
-        ctx.beginPath();
-        ctx.arc(iconX, iy, iconR + 4 * u, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, amount / duration));
-        ctx.stroke();
-      }
-      ctx.textAlign = left ? 'left' : 'right';
-      ctx.fillStyle = COLORS.text;
-      ctx.font = `800 ${20 * u}px system-ui, sans-serif`;
-      ctx.fillText(STACKING.has(kind) ? `×${amount}` : Number.isFinite(amount) ? `${Math.ceil(amount)}s` : '∞', textX, iy - 7 * u);
-      ctx.fillStyle = COLORS.muted;
-      ctx.font = `500 ${12 * u}px system-ui, sans-serif`;
-      ctx.fillText(HUD_NAMES[kind], textX, iy + 11 * u);
-      y += rowH;
-    }
-  }
-
-  private label(i: PlayerIndex): string {
-    return `${this.looks[i]} ${this.names[i]}`.trim();
-  }
-
-  private drawOverlay(state: GameState, paused: boolean): void {
-    let title = '';
-    let sub = '';
-    if (paused) {
-      title = 'Paused';
-      sub = this.pausedHint;
-    } else if (state.phase === 'countdown' && state.modifier) {
-      this.drawModifierReel(state);
-      return;
-    } else if (state.phase === 'countdown') {
-      title = `Round ${state.roundIndex + 1}`;
-      sub = state.arenas.length > 1 ? `${state.arena.name}  ·  Get ready` : 'Get ready';
-    } else if (state.phase === 'roundOver') {
-      const w = state.lastRoundWinner;
-      title = w === null ? 'Draw' : `${this.label(w)} takes the round`;
-      sub = w === null ? 'Replaying the round' : '';
-    } else if (state.phase === 'matchOver' && state.matchWinner !== null) {
-      title = `${this.label(state.matchWinner)} wins!`;
-      sub = this.matchOverHint;
-    } else return;
-
-    const ctx = this.ctx;
-    ctx.fillStyle = 'rgba(10,11,15,0.55)';
-    ctx.fillRect(0, 0, this.width, this.height);
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    const winner = state.phase === 'matchOver' ? state.matchWinner : state.phase === 'roundOver' ? state.lastRoundWinner : null;
-    ctx.fillStyle = winner !== null && !paused ? COLORS.players[winner] : COLORS.text;
-    const u = this.ui;
-    // On a phone the buttons go under the text, so lift it.
-    const cy = this.height / 2 - (this.compact ? 40 * u : 0);
-    ctx.font = `800 ${52 * u}px system-ui, sans-serif`;
-    ctx.fillText(title, this.width / 2, cy - 16 * u);
-    ctx.fillStyle = COLORS.text;
-    ctx.font = `500 ${18 * u}px system-ui, sans-serif`;
-    ctx.fillText(sub, this.width / 2, cy + 32 * u);
-    if (state.phase === 'matchOver' && !paused) {
-      const [a, b] = state.players.map((p) => p.nearMisses);
-      ctx.fillStyle = NEAR_MISS_COLOR;
-      ctx.font = `600 ${16 * u}px system-ui, sans-serif`;
-      ctx.fillText(`Clutch dodges: ${this.names[0]} ${a} · ${this.names[1]} ${b}`, this.width / 2, cy + (sub ? 68 : 36) * u);
-    }
-  }
-
-  // Countdown with a modifier: a slot-machine reel of modifier names that
-  // slows down and lands on this round's, then says what it does.
-  private drawModifierReel(state: GameState): void {
-    const ctx = this.ctx;
-    const id = state.modifier!;
-    const { step, landed } = modifierReel(state.phaseTime);
-    // Count back from the landing so the last name shown is the real one.
-    const order = MODIFIER_IDS;
-    const at = order.indexOf(id) - (REEL_STEPS.length - step);
-    const shown = order[((at % order.length) + order.length) % order.length];
-    const cx = this.width / 2;
-    const cy = this.height / 2;
-    ctx.fillStyle = 'rgba(10,11,15,0.6)';
-    ctx.fillRect(0, 0, this.width, this.height);
-    // Shrunk as a whole on a short phone screen.
-    const u = this.ui;
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.scale(u, u);
-    ctx.translate(-cx, -cy);
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillStyle = COLORS.text;
-    ctx.font = '800 28px system-ui, sans-serif';
-    ctx.fillText(`Round ${state.roundIndex + 1}`, cx, cy - 110);
-    if (state.arenas.length > 1) {
-      ctx.fillStyle = COLORS.muted;
-      ctx.font = '600 16px system-ui, sans-serif';
-      ctx.fillText(state.arena.name, cx, cy - 80);
-    }
-
-    // The reel window.
-    const w = Math.min(560, (this.width - 40) / u);
-    const h = 96;
-    ctx.save();
-    ctx.fillStyle = 'rgba(255,255,255,0.06)';
-    ctx.strokeStyle = landed ? MODIFIER_COLOR : 'rgba(255,255,255,0.3)';
-    ctx.lineWidth = landed ? 4 : 2;
-    ctx.beginPath();
-    ctx.roundRect(cx - w / 2, cy - h / 2 - 10, w, h, 14);
-    ctx.fill();
-    ctx.stroke();
-    ctx.clip();
-    // Between steps each name drifts up through the window and fades; once
-    // landed it pops.
-    const prev = step === 0 ? 0 : REEL_STEPS[step - 1];
-    const next = REEL_STEPS[step] ?? prev;
-    const slide = landed ? 0.5 : (state.phaseTime - prev) / Math.max(0.001, next - prev);
-    const sinceLand = state.phaseTime - REEL_STEPS[REEL_STEPS.length - 1];
-    const pop = landed ? 1 + 0.25 * Math.max(0, 1 - sinceLand / 0.2) : 1;
-    ctx.translate(cx, cy - 10 + (0.5 - slide) * h * 0.4);
-    ctx.scale(pop, pop);
-    ctx.globalAlpha = landed ? 1 : 1 - Math.abs(slide - 0.5);
-    ctx.fillStyle = landed ? MODIFIER_COLOR : COLORS.text;
-    ctx.font = '900 48px system-ui, sans-serif';
-    ctx.fillText(MODIFIERS[shown].name, 0, 0);
-    ctx.restore();
-
-    if (landed) {
-      const a = Math.min(1, sinceLand / 0.25);
-      ctx.fillStyle = hexAlpha(COLORS.text, a);
-      ctx.font = '600 22px system-ui, sans-serif';
-      ctx.fillText(MODIFIERS[id].blurb, cx, cy + 70);
-      ctx.fillStyle = hexAlpha(COLORS.muted, a);
-      ctx.font = '500 16px system-ui, sans-serif';
-      ctx.fillText('Get ready', cx, cy + 104);
-    }
-    ctx.restore();
-  }
-
   // Plain background behind HTML screens such as the hotseat lobby.
   drawBackdrop(): void {
     this.ctx.fillStyle = COLORS.background;
     this.ctx.fillRect(0, 0, this.width, this.height);
   }
 
-  // Title screen with a live key test, so ghosting shows up before a match.
   drawTitle(
     isHeld: (code: string) => boolean,
     slots: readonly string[],
@@ -1192,155 +683,6 @@ export class Renderer {
     modifiers: boolean,
     rotation: boolean,
   ): void {
-    const ctx = this.ctx;
-    ctx.fillStyle = COLORS.background;
-    ctx.fillRect(0, 0, this.width, this.height);
-    // Sections flow down the page so they never overlap, spreading out on
-    // tall windows. A window too small for them shrinks the whole screen.
-    const s = Math.min(1, this.height / TITLE_MIN_H, this.width / TITLE_MIN_W);
-    const w = this.width / s;
-    const h = this.height / s;
-    ctx.save();
-    ctx.scale(s, s);
-    const cx = w / 2;
-    const footer = h - 30;
-    const head = Math.max(50, Math.min(h * 0.2, footer - 460));
-    const top = Math.max(head + 190, Math.min(h * 0.42, footer - 270));
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillStyle = COLORS.text;
-    ctx.font = '800 56px system-ui, sans-serif';
-    ctx.fillText('Floor Plan Duel', cx, head);
-    ctx.font = '500 20px system-ui, sans-serif';
-    ctx.fillStyle = COLORS.muted;
-    ctx.fillText('Press Enter to start  ·  B for full screen  ·  M to mute  ·  N for music', cx, head + 52);
-    ctx.fillStyle = COLORS.text;
-    ctx.font = '600 17px system-ui, sans-serif';
-    ctx.fillText(rotation ? `Maps: ${mapName}, then a new one each round` : `Map: ${mapName}`, cx, head + 92);
-    ctx.fillStyle = COLORS.muted;
-    ctx.font = '400 13px system-ui, sans-serif';
-    ctx.fillText(
-      `${mapCount > 1 ? 'Tab to change map  ·  ' : ''}E to open the map editor  ·  H for hotseat  ·  P to use phones as controllers`,
-      cx,
-      head + 114,
-    );
-    ctx.fillStyle = modifiers ? MODIFIER_COLOR : COLORS.muted;
-    ctx.font = '600 13px system-ui, sans-serif';
-    ctx.fillText(`Round modifiers: ${modifiers ? 'ON' : 'OFF'}  (R to change)`, cx, head + 138);
-    ctx.fillStyle = rotation ? COLORS.text : COLORS.muted;
-    ctx.fillText(`Map rotation: ${rotation ? 'ON' : 'OFF'}  (T to change)`, cx, head + 158);
-
-    const colW = Math.min(360, w / 2 - 20);
-    this.drawKeyPanel(KEY_BINDINGS.p1, 0, cx - colW / 2 - 10, top, isHeld, slots[0]);
-    this.drawKeyPanel(KEY_BINDINGS.p2, 1, cx + colW / 2 + 10, top, isHeld, slots[1]);
-
-    ctx.font = '400 14px system-ui, sans-serif';
-    ctx.fillStyle = COLORS.muted;
-    ctx.textAlign = 'center';
-    ctx.fillText(
-      'Key test: hold every key you would use together. If a key fails to light up, your keyboard is ghosting.',
-      cx,
-      footer,
-    );
-    // A tap opens the phone menu (see game.ts), for phones that land here.
-    if (navigator.maxTouchPoints > 0) {
-      ctx.fillStyle = COLORS.players[0];
-      ctx.font = '700 15px system-ui, sans-serif';
-      ctx.fillText('On a phone? Tap anywhere to play on it.', cx, footer - 26);
-    }
-    ctx.restore();
+    drawTitle(this.ctx, this.width, this.height, this.looks, isHeld, slots, mapName, mapCount, modifiers, rotation);
   }
-
-  private drawKeyPanel(
-    keys: PlayerKeys,
-    i: PlayerIndex,
-    cx: number,
-    top: number,
-    isHeld: (code: string) => boolean,
-    slot: string,
-  ) {
-    const ctx = this.ctx;
-    ctx.fillStyle = COLORS.players[i];
-    ctx.font = '700 22px system-ui, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText(PLAYER_NAMES[i], cx + 16, top);
-    // Look preview, cycled with this player's dodge keys.
-    ctx.beginPath();
-    ctx.arc(cx - 24, top, 20, 0, Math.PI * 2);
-    ctx.fill();
-    drawLook(ctx, this.looks[i], cx - 24, top, 20);
-    // A slot is 'human', a bot difficulty, or a phone's label ("📱 Name").
-    const phone = slot.startsWith('📱');
-    const who = phone ? slot : slot === 'human' ? 'Human' : `Bot · ${slot[0].toUpperCase()}${slot.slice(1)}`;
-    ctx.fillStyle = COLORS.text;
-    ctx.font = '600 16px system-ui, sans-serif';
-    ctx.fillText(who, cx, top + 190);
-    ctx.fillStyle = COLORS.muted;
-    ctx.font = '400 13px system-ui, sans-serif';
-    if (phone) {
-      ctx.fillText('playing on a phone', cx, top + 212);
-      ctx.fillText('the phone picks the look', cx, top + 232);
-    } else {
-      ctx.fillText(`press ${i + 1} to change`, cx, top + 212);
-      ctx.fillText('dodge key changes your look', cx, top + 232);
-    }
-    if (slot !== 'human') ctx.globalAlpha = 0.3;
-    const k = 42;
-    const gap = 6;
-    const cap = (code: string, x: number, y: number, caption?: string) => {
-      const held = isHeld(code);
-      ctx.fillStyle = held ? COLORS.players[i] : 'rgba(255,255,255,0.08)';
-      ctx.strokeStyle = 'rgba(255,255,255,0.25)';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.roundRect(x - k / 2, y - k / 2, k, k, 6);
-      ctx.fill();
-      ctx.stroke();
-      ctx.fillStyle = held ? '#111' : COLORS.text;
-      ctx.font = '600 16px system-ui, sans-serif';
-      ctx.fillText(keyLabel(code), x, y + 1);
-      if (caption) {
-        ctx.fillStyle = COLORS.muted;
-        ctx.font = '400 12px system-ui, sans-serif';
-        ctx.fillText(caption, x, y + k / 2 + 12);
-      }
-    };
-    const moveX = cx - 80;
-    const y0 = top + 50;
-    cap(keys.up, moveX, y0);
-    cap(keys.left, moveX - k - gap, y0 + k + gap);
-    cap(keys.down, moveX, y0 + k + gap);
-    cap(keys.right, moveX + k + gap, y0 + k + gap);
-    ctx.fillStyle = COLORS.muted;
-    ctx.font = '400 12px system-ui, sans-serif';
-    ctx.fillText('move', moveX, y0 + 2 * k + gap + 12);
-    const ax = cx + 40;
-    const step = k + 18;
-    // In keyboard order: shoot is under the index finger, so it's on the
-    // left for P1 (F G) and on the right for P2 (. /).
-    const shootFirst = i === 0;
-    cap(keys.shoot, ax + step * (shootFirst ? 0.5 : 1.5), y0 + k + gap, 'shoot');
-    cap(keys.dodge, ax + step * (shootFirst ? 1.5 : 0.5), y0 + k + gap, 'dodge');
-    ctx.globalAlpha = 1;
-  }
-}
-
-function keyLabel(code: string): string {
-  const named: Record<string, string> = {
-    ArrowUp: '↑',
-    ArrowDown: '↓',
-    ArrowLeft: '←',
-    ArrowRight: '→',
-    Comma: ',',
-    Period: '.',
-    Slash: '/',
-  };
-  if (named[code]) return named[code];
-  if (code.startsWith('Key')) return code.slice(3);
-  return code;
-}
-
-function hexAlpha(hex: string, alpha: number): string {
-  const n = parseInt(hex.slice(1), 16);
-  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`;
 }

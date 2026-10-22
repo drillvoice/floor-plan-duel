@@ -18,6 +18,7 @@ import {
   type HotseatSession,
 } from '../hotseat/session';
 import { cycleLook, LOOKS } from '../render/looks';
+import { el } from './dom';
 
 const SESSION_KEY = 'fpd.hotseat';
 
@@ -224,14 +225,4 @@ function keyName(code: string): string {
 
 function ordinal(n: number): string {
   return n === 1 ? 'st' : n === 2 ? 'nd' : n === 3 ? 'rd' : 'th';
-}
-
-function el<K extends keyof HTMLElementTagNameMap>(
-  tag: K,
-  props: Partial<HTMLElementTagNameMap[K]> = {},
-  children: (Node | string)[] = [],
-): HTMLElementTagNameMap[K] {
-  const node = Object.assign(document.createElement(tag), props);
-  node.append(...children);
-  return node;
 }

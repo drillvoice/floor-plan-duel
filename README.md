@@ -28,6 +28,7 @@ On the title screen:
 - **1 / 2** switch each player between Human and Bot (Easy, Normal, Hard). Two bots will play each other.
 - Each player's **dodge key** cycles their look: a plain circle or a cute icon inside it.
 - **H** opens hotseat mode, for a group taking turns (see below).
+- **P** lets players use their phones as controllers (see below).
 - **R** turns round modifiers on or off (see below). They start on.
 - **Tab** changes the map; **E** opens the map editor (on a saved map, or the one you edited last).
 - Built-in maps: **The Flat** (two rooms and a hallway), **Studio Apartment** (one open room, quick to the fight), **Bathroom Brawl** (tiny and cramped), **The Office** (cubicles between a meeting room and the boss's office) and **Lights Out** (a dark basement: you see what's near each player, plus bullets, power-ups and muzzle flashes).
@@ -80,6 +81,17 @@ For a group sharing one laptop. Press **H** on the title screen, add everyone's 
 - The winner stays on their side. The loser goes to the back of the line and the next person takes their keys.
 - The table tracks everyone's wins, losses and best winning streak, with a 🏆 for the leader. Players can be added or removed between matches.
 - The session is saved in the browser, so a reload doesn't lose the scores. **Reset scores** starts afresh with the same people.
+
+## Phone controllers
+
+Players can join on their phones instead of sharing the keyboard. Press **P** on the title screen: the screen shows a room code and a QR code.
+
+- Each player scans the QR code (or opens the site with `?join` and types the code). The phone takes a free side, P1 or P2; tap the other side to swap if it's free. Pick a look and a name on the phone.
+- Press **Start** on a phone, or Enter on the big screen. During the match the phone shows a joystick (put your thumb down anywhere on the left half), **Dodge** and **Shoot**, and a pause button. It buzzes when you're hit (on phones that support vibration).
+- A side with no phone is played from the keyboard or by a bot, as set on the title screen, so one phone player can take on a keyboard player or a bot.
+- Phones stay connected between matches, and **Rematch** on a phone starts the next one. If a phone drops out mid-match the game pauses, and the phone rejoins the same side when it reconnects.
+
+Phones connect straight to the computer with WebRTC. The free [PeerJS](https://peerjs.com) server introduces them, so both need internet access to join; after that the controls go directly between them, over the local network when they share one. The phones must be able to open the same address as the computer, so use the deployed site, or for local testing run `npm run dev -- --host` and open the network address it prints rather than `localhost`.
 
 ## Map editor
 

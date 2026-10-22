@@ -1038,7 +1038,7 @@ export class Renderer {
     ctx.fillStyle = COLORS.muted;
     ctx.font = '400 13px system-ui, sans-serif';
     ctx.fillText(
-      `${mapCount > 1 ? 'Tab to change map  ·  ' : ''}E to open the map editor  ·  H for hotseat (take turns, winner stays on)`,
+      `${mapCount > 1 ? 'Tab to change map  ·  ' : ''}E to open the map editor  ·  H for hotseat  ·  P to use phones as controllers`,
       cx,
       head + 114,
     );
@@ -1079,14 +1079,21 @@ export class Renderer {
     ctx.arc(cx - 24, top, 20, 0, Math.PI * 2);
     ctx.fill();
     drawLook(ctx, this.looks[i], cx - 24, top, 20);
-    const who = slot === 'human' ? 'Human' : `Bot · ${slot[0].toUpperCase()}${slot.slice(1)}`;
+    // A slot is 'human', a bot difficulty, or a phone's label ("📱 Name").
+    const phone = slot.startsWith('📱');
+    const who = phone ? slot : slot === 'human' ? 'Human' : `Bot · ${slot[0].toUpperCase()}${slot.slice(1)}`;
     ctx.fillStyle = COLORS.text;
     ctx.font = '600 16px system-ui, sans-serif';
     ctx.fillText(who, cx, top + 190);
     ctx.fillStyle = COLORS.muted;
     ctx.font = '400 13px system-ui, sans-serif';
-    ctx.fillText(`press ${i + 1} to change`, cx, top + 212);
-    ctx.fillText('dodge key changes your look', cx, top + 232);
+    if (phone) {
+      ctx.fillText('playing on a phone', cx, top + 212);
+      ctx.fillText('the phone picks the look', cx, top + 232);
+    } else {
+      ctx.fillText(`press ${i + 1} to change`, cx, top + 212);
+      ctx.fillText('dodge key changes your look', cx, top + 232);
+    }
     if (slot !== 'human') ctx.globalAlpha = 0.3;
     const k = 42;
     const gap = 6;

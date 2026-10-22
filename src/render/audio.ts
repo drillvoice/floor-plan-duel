@@ -1,6 +1,6 @@
 // Synthesised sound effects with Web Audio: no audio files.
 
-import type { GameEvent, GameState } from '../sim/types';
+import { POWER_UP_CATEGORY, type GameEvent, type GameState } from '../sim/types';
 
 export class Sound {
   private ctx: AudioContext | null = null;
@@ -66,6 +66,11 @@ export class Sound {
           break;
         case 'pickup':
           [523, 659, 784].forEach((f, n) => this.tone(f, 0.12, 'triangle', 0.18, 1, n * 0.06));
+          break;
+        case 'effectEnded':
+          // A short blip: rising when a curse lifts (good news), falling when a buff runs out.
+          if (POWER_UP_CATEGORY[e.kind] === 'curse') [587, 880].forEach((f, n) => this.tone(f, 0.09, 'triangle', 0.14, 1, n * 0.07));
+          else [880, 587].forEach((f, n) => this.tone(f, 0.09, 'triangle', 0.12, 1, n * 0.07));
           break;
         case 'powerUpTelegraph':
           this.tone(1200, 0.3, 'sine', 0.05, 1.3);

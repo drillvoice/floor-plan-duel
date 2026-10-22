@@ -138,6 +138,7 @@ export type GameEvent =
   | { type: 'powerUpTelegraph'; kind: PowerUpKind; pos: Vec2 }
   | { type: 'pickup'; player: PlayerIndex; kind: PowerUpKind; pos: Vec2 }
   | { type: 'powerUpExpired'; pos: Vec2 }
+  | { type: 'effectEnded'; player: PlayerIndex; kind: PowerUpKind } // a timed power-up ran out
   | { type: 'shieldBlock'; player: PlayerIndex; pos: Vec2 };
 
 export interface GameState {

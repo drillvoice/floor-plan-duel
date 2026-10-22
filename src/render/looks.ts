@@ -2,6 +2,8 @@
 // A look is just a string id so it's easy to save; photos of faces could be
 // added later as another kind of look drawn the same way.
 
+import { readJsonPref, writeJsonPref } from '../prefs';
+
 export const LOOKS = ['', '🐱', '🐶', '🦊', '🐼', '🐸', '🐵', '🐧', '🐙', '🦄', '🐯', '🐷', '🐻', '🤖', '👽', '👻', '🎃'];
 
 const LOOKS_KEY = 'fpd.looks';
@@ -26,19 +28,11 @@ export function drawLook(ctx: CanvasRenderingContext2D, look: string, x: number,
 }
 
 export function loadLooks(): [string, string] {
-  try {
-    const saved = JSON.parse(localStorage.getItem(LOOKS_KEY) ?? 'null');
-    if (Array.isArray(saved) && saved.length === 2 && saved.every((l) => LOOKS.includes(l))) return saved as [string, string];
-  } catch {
-    // Fall back to the defaults.
-  }
+  const saved = readJsonPref(LOOKS_KEY);
+  if (Array.isArray(saved) && saved.length === 2 && saved.every((l) => LOOKS.includes(l))) return saved as [string, string];
   return ['🐱', '🐶'];
 }
 
 export function saveLooks(looks: [string, string]): void {
-  try {
-    localStorage.setItem(LOOKS_KEY, JSON.stringify(looks));
-  } catch {
-    // Not saved; the choice still applies this session.
-  }
+  writeJsonPref(LOOKS_KEY, looks);
 }

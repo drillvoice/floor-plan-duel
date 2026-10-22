@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { emptyTouchState, TouchPlayer } from '../src/input/touch';
 import { BUILT_IN_MAPS } from '../src/maps/builtin';
-import { arenaLayout } from '../src/render/renderer';
+import { arenaLayout } from '../src/render/layout';
 
 describe('touch player', () => {
   it('passes the joystick and held shoot straight through', () => {

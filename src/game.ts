@@ -1,20 +1,24 @@
-import { BotPlayer, type Difficulty } from './bot/bot';
+import { BotPlayer } from './bot/bot';
 import { emptyTouchState, TouchPlayer } from './input/touch';
 import { CONFIG, KEY_BINDINGS } from './config';
 import { Keyboard, KeyboardPlayer } from './input/keyboard';
 import type { InputSource } from './input/types';
 import { lastEditedMap, listSavedMaps } from './maps/storage';
 import { PhoneHost } from './net/host';
-import { cleanName, PhonePlayer, type HostScreen } from './net/protocol';
+import { PhonePlayer, type HostScreen } from './net/protocol';
 import { BUILT_IN_MAPS, copyOfBuiltIn } from './maps/builtin';
 import { Sound } from './render/audio';
 import { cycleLook, loadLooks, saveLooks } from './render/looks';
 import { Music } from './render/music';
-import { COLORS, modifierReel, Renderer } from './render/renderer';
+import { modifierReel } from './render/overlay';
+import { Renderer } from './render/renderer';
+import { COLORS } from './render/theme';
 import { Editor } from './screens/editor';
 import { HotseatLobby } from './screens/hotseat';
 import { MatchOverlay, MobileMenu, prefersTouch, type OverlayMode } from './screens/mobile';
 import { PhoneLobby } from './screens/phones';
+import { Settings, type Slot } from './settings';
+import { shuffled } from './sim/rng';
 import { createGame, step } from './sim/step';
 import type { GameState, MapData } from './sim/types';
 
@@ -48,22 +52,8 @@ document.addEventListener('fullscreenchange', () => {
   fullscreenButton.title = document.fullscreenElement ? 'Exit full screen (B)' : 'Full screen (B)';
 });
 
-// Each slot is a human on the keyboard or a bot at some difficulty.
-type Slot = 'human' | Difficulty;
-const SLOT_ORDER: Slot[] = ['human', 'easy', 'normal', 'hard'];
-const SLOTS_KEY = 'fpd.slots';
-
-function loadSlots(): [Slot, Slot] {
-  try {
-    const saved = JSON.parse(localStorage.getItem(SLOTS_KEY) ?? 'null');
-    if (Array.isArray(saved) && saved.length === 2 && saved.every((s) => SLOT_ORDER.includes(s))) return saved as [Slot, Slot];
-  } catch {
-    // Storage unavailable or corrupt: fall back to two humans.
-  }
-  return ['human', 'human'];
-}
-
-const slots = loadSlots();
+const settings = new Settings();
+const slots = settings.slots;
 
 // Phones as controllers. The room opens the first time the phone screen is
 // shown; after that, a side with a phone on it is played from the phone.
@@ -91,60 +81,12 @@ function sideNames(): [string, string] {
   return [phones.room.phoneIn(0)?.name || 'P1', phones.room.phoneIn(1)?.name || 'P2'];
 }
 
-function cycleSlot(i: 0 | 1): void {
-  slots[i] = SLOT_ORDER[(SLOT_ORDER.indexOf(slots[i]) + 1) % SLOT_ORDER.length];
-  try {
-    localStorage.setItem(SLOTS_KEY, JSON.stringify(slots));
-  } catch {
-    // Not saved; the choice still applies this session.
-  }
-}
-
-// Round modifiers on or off, from R on the title screen. On unless turned off.
-const MODIFIERS_KEY = 'fpd.modifiers';
-let modifiersOn = true;
-try {
-  modifiersOn = localStorage.getItem(MODIFIERS_KEY) !== 'off';
-} catch {
-  // Storage unavailable: keep the default.
-}
-function toggleModifiers(): void {
-  modifiersOn = !modifiersOn;
-  try {
-    localStorage.setItem(MODIFIERS_KEY, modifiersOn ? 'on' : 'off');
-  } catch {
-    // Not saved; the choice still applies this session.
-  }
-}
-
-// Map rotation, from T on the title screen: a match starts on the chosen map
-// and plays a different built-in map each round. On unless turned off.
-const ROTATION_KEY = 'fpd.mapRotation';
-let rotationOn = true;
-try {
-  rotationOn = localStorage.getItem(ROTATION_KEY) !== 'off';
-} catch {
-  // Storage unavailable: keep the default.
-}
-function toggleRotation(): void {
-  rotationOn = !rotationOn;
-  try {
-    localStorage.setItem(ROTATION_KEY, rotationOn ? 'on' : 'off');
-  } catch {
-    // Not saved; the choice still applies this session.
-  }
-}
-
 // The maps a match plays, one per round: the chosen map first, then the other
-// built-in maps in a random order. Test play from the editor sticks to its map.
-function matchMaps(first: MapData, from: MatchFrom): MapData[] {
-  if (!rotationOn || from === 'editor') return [first];
-  const rest = BUILT_IN_MAPS.filter((m) => m !== first);
-  for (let i = rest.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [rest[i], rest[j]] = [rest[j], rest[i]];
-  }
-  return [first, ...rest];
+// built-in maps in an order set by the match's seed, so the seed alone says
+// how a match went. Test play from the editor sticks to its map.
+function matchMaps(first: MapData, from: MatchFrom, seed: number): MapData[] {
+  if (!settings.rotation || from === 'editor') return [first];
+  return [first, ...shuffled(BUILT_IN_MAPS.filter((m) => m !== first), seed)];
 }
 
 const looks = loadLooks();
@@ -204,25 +146,6 @@ function openPhoneLobby(): void {
 // Phone-only play: on a touch-only device the game opens on a touch menu
 // instead of the keyboard title screen, and you play a bot on the phone.
 let mobile = prefersTouch();
-const MOBILE_BOT_KEY = 'fpd.mobile.bot';
-// Shared with the phone controller, so the phone remembers one name.
-const MOBILE_NAME_KEY = 'fpd.pad.name';
-let mobileBot: Difficulty = 'normal';
-let mobileName = '';
-try {
-  const saved = localStorage.getItem(MOBILE_BOT_KEY);
-  if (saved === 'easy' || saved === 'normal' || saved === 'hard') mobileBot = saved;
-  mobileName = cleanName(localStorage.getItem(MOBILE_NAME_KEY) ?? '');
-} catch {
-  // Storage unavailable: keep the defaults.
-}
-function saveMobile(key: string, value: string): void {
-  try {
-    localStorage.setItem(key, value);
-  } catch {
-    // Not saved; the choice still applies this session.
-  }
-}
 
 const touchState = emptyTouchState();
 const touchPlayer = new TouchPlayer(touchState);
@@ -230,12 +153,12 @@ const touchPlayer = new TouchPlayer(touchState);
 const mobileMenu = new MobileMenu({
   settings: () => ({
     look: looks[0],
-    name: mobileName,
-    bot: mobileBot,
+    name: settings.mobileName,
+    bot: settings.mobileBot,
     mapName: selectedMap().name,
     mapCount: availableMaps().length,
-    rotation: rotationOn,
-    modifiers: modifiersOn,
+    rotation: settings.rotation,
+    modifiers: settings.modifiers,
     sound: !sound.muted,
     music: music.enabled,
   }),
@@ -243,20 +166,14 @@ const mobileMenu = new MobileMenu({
     looks[0] = cycleLook(looks[0], step);
     saveLooks(looks);
   },
-  setName: (name) => {
-    mobileName = cleanName(name);
-    saveMobile(MOBILE_NAME_KEY, mobileName);
-  },
-  setBot: (bot) => {
-    mobileBot = bot;
-    saveMobile(MOBILE_BOT_KEY, bot);
-  },
+  setName: (name) => settings.setMobileName(name),
+  setBot: (bot) => settings.setMobileBot(bot),
   cycleMap: (step) => {
     const count = availableMaps().length;
     mapIndex = (mapIndex + step + count) % count;
   },
-  toggleRotation: () => toggleRotation(),
-  toggleModifiers: () => toggleModifiers(),
+  toggleRotation: () => settings.toggleRotation(),
+  toggleModifiers: () => settings.toggleModifiers(),
   toggleSound: () => sound.toggleMute(),
   toggleMusic: () => music.toggle(),
   onPlay: () => {
@@ -367,7 +284,7 @@ interface HotseatMatch {
 function startMatch(map: MapData, from: MatchFrom = 'title', hotseat?: HotseatMatch): void {
   // The seed is picked here, outside the sim; the sim itself never reads the clock.
   const seed = (Date.now() ^ (performance.now() * 1000)) >>> 0;
-  let cfg = { ...CONFIG, modifiers: { ...CONFIG.modifiers, enabled: modifiersOn } };
+  let cfg = { ...CONFIG, modifiers: { ...CONFIG.modifiers, enabled: settings.modifiers } };
   if (hotseat) {
     // Hotseat is always two people on the keyboard, with their own names and looks.
     inputs = [new KeyboardPlayer(keyboard, KEY_BINDINGS.p1), new KeyboardPlayer(keyboard, KEY_BINDINGS.p2)];
@@ -377,9 +294,9 @@ function startMatch(map: MapData, from: MatchFrom = 'title', hotseat?: HotseatMa
     renderer.matchOverHint = 'Enter or Esc: back to the hotseat line-up';
   } else if (from === 'mobile') {
     touchPlayer.reset();
-    inputs = [touchPlayer, new BotPlayer(mobileBot, seed * 2 + 2)];
+    inputs = [touchPlayer, new BotPlayer(settings.mobileBot, seed * 2 + 2)];
     renderer.looks = [looks[0], looks[1]];
-    renderer.names = [mobileName || 'You', 'Bot'];
+    renderer.names = [settings.mobileName || 'You', 'Bot'];
     renderer.matchOverHint = '';
   } else {
     inputs = makeInputs(seed);
@@ -389,7 +306,7 @@ function startMatch(map: MapData, from: MatchFrom = 'title', hotseat?: HotseatMa
   }
   renderer.compact = from === 'mobile';
   renderer.pausedHint = from === 'mobile' ? '' : 'Esc to resume · Q to quit to title';
-  screen = { kind: 'match', state: createGame(matchMaps(map, from), seed, cfg), map, paused: false, from, recorded: false };
+  screen = { kind: 'match', state: createGame(matchMaps(map, from, seed), seed, cfg), map, paused: false, from, recorded: false };
   keyboard.clear();
   music.start(screen.state.arena.music);
 }
@@ -421,16 +338,16 @@ keyboard.onPress((code) => {
   if (screen.kind === 'editor' || screen.kind === 'hotseat' || screen.kind === 'phones' || screen.kind === 'mobile') return; // they handle their own keys
   if (screen.kind === 'title') {
     if (code === 'Enter' || code === 'Space') startMatch(selectedMap());
-    else if (code === 'Digit1') cycleSlot(0);
-    else if (code === 'Digit2') cycleSlot(1);
+    else if (code === 'Digit1') settings.cycleSlot(0);
+    else if (code === 'Digit2') settings.cycleSlot(1);
     else if (code === KEY_BINDINGS.p1.dodge || code === KEY_BINDINGS.p2.dodge) {
       const i = code === KEY_BINDINGS.p1.dodge ? 0 : 1;
       looks[i] = cycleLook(looks[i], 1);
       saveLooks(looks);
     } else if (code === 'KeyH') openLobby();
     else if (code === 'KeyP') openPhoneLobby();
-    else if (code === 'KeyR') toggleModifiers();
-    else if (code === 'KeyT') toggleRotation();
+    else if (code === 'KeyR') settings.toggleModifiers();
+    else if (code === 'KeyT') settings.toggleRotation();
     else if (code === 'Tab') mapIndex = (mapIndex + 1) % availableMaps().length;
     else if (code === 'KeyE') {
       const map = selectedMap();
@@ -502,7 +419,7 @@ function frame(now: number): void {
       const phone = phones.room.phoneIn(i);
       return phone ? `📱 ${phone.name || 'Phone'}` : slots[i];
     });
-    renderer.drawTitle((code) => keyboard.isHeld(code), labels, selectedMap().name, availableMaps().length, modifiersOn, rotationOn);
+    renderer.drawTitle((code) => keyboard.isHeld(code), labels, selectedMap().name, availableMaps().length, settings.modifiers, settings.rotation);
   } else if (screen.kind === 'editor') {
     accumulator = 0;
     editor.draw();
@@ -583,12 +500,3 @@ requestAnimationFrame(frame);
     return screen.kind === 'match' ? screen.state : null;
   },
 };
-
-// Offline support in production builds (the dev server stays uncached).
-if (import.meta.env.PROD && 'serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('sw.js').catch(() => {
-      // Offline play just won't be available.
-    });
-  });
-}

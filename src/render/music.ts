@@ -4,6 +4,7 @@
 // arrangement. Tension (how far through the round we are) raises the tempo
 // and adds layers to whichever is playing.
 
+import { readFlag, writeFlag } from '../prefs';
 import type { MusicStyle } from '../sim/types';
 import type { Sound } from './audio';
 import { chordTones, freq, SCORES, STEPS_PER_BAR } from './musicScore';
@@ -61,22 +62,12 @@ export class Music {
   private lastLead: number | undefined; // pitch of the last theremin note, to slide from
 
   constructor(private sound: Sound) {
-    let saved: string | null = null;
-    try {
-      saved = localStorage.getItem(MUSIC_KEY);
-    } catch {
-      // Default to on.
-    }
-    this.enabled = saved !== 'off';
+    this.enabled = readFlag(MUSIC_KEY, true);
   }
 
   toggle(): void {
     this.enabled = !this.enabled;
-    try {
-      localStorage.setItem(MUSIC_KEY, this.enabled ? 'on' : 'off');
-    } catch {
-      // Applies this session only.
-    }
+    writeFlag(MUSIC_KEY, this.enabled);
     if (!this.enabled) this.stop();
   }
 

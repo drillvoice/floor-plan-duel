@@ -15,30 +15,14 @@ import {
   type PadMessage,
 } from '../net/protocol';
 import type { PlayerIndex } from '../sim/types';
+import { PHONE_NAME_KEY, readPref, writePref } from '../prefs';
 import { el } from '../screens/dom';
 
 const SEND_EVERY = 50; // ms between messages when nothing changes
 const HOST_TIMEOUT = 3000; // ms without word from the desktop before reconnecting
 
 const ID_KEY = 'fpd.pad.id';
-const NAME_KEY = 'fpd.pad.name';
 const LOOK_KEY = 'fpd.pad.look';
-
-function stored(key: string): string | null {
-  try {
-    return localStorage.getItem(key);
-  } catch {
-    return null;
-  }
-}
-
-function store(key: string, value: string): void {
-  try {
-    localStorage.setItem(key, value);
-  } catch {
-    // Not saved; fine for this visit.
-  }
-}
 
 const randomId = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
 
@@ -54,15 +38,15 @@ export function startController(joinParam: string): void {
   document.head.append(el('style', { textContent: CSS + touchCss('#pad-root') }));
   document.addEventListener('contextmenu', (e) => e.preventDefault());
 
-  const id = stored(ID_KEY) ?? randomId();
-  store(ID_KEY, id);
-  const savedLook = stored(LOOK_KEY);
+  const id = readPref(ID_KEY) ?? randomId();
+  writePref(ID_KEY, id);
+  const savedLook = readPref(LOOK_KEY);
   const pad: PadMessage = {
     t: 'pad',
     id,
     boot: randomId(),
     seq: 0,
-    name: stored(NAME_KEY) ?? '',
+    name: readPref(PHONE_NAME_KEY) ?? '',
     // A random animal until they pick one.
     look: savedLook !== null && LOOKS.includes(savedLook) ? savedLook : LOOKS[1 + Math.floor(Math.random() * (LOOKS.length - 1))],
     want: null,
@@ -314,7 +298,7 @@ export function startController(joinParam: string): void {
       const b = el('button', { type: 'button', className: 'arrow', textContent: label });
       b.addEventListener('click', () => {
         pad.look = cycleLook(pad.look, step);
-        store(LOOK_KEY, pad.look);
+        writePref(LOOK_KEY, pad.look);
         lookFace.textContent = pad.look || '';
         send();
       });
@@ -327,7 +311,7 @@ export function startController(joinParam: string): void {
     name.autocomplete = 'off';
     name.addEventListener('input', () => {
       pad.name = cleanName(name.value);
-      store(NAME_KEY, pad.name);
+      writePref(PHONE_NAME_KEY, pad.name);
       send();
     });
     name.addEventListener('keydown', (e) => {

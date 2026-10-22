@@ -2,6 +2,7 @@
 // effects, with the HUD (hud.ts) and overlays (overlay.ts) on top, and the
 // title screen (title.ts). Reads state and events; never changes them.
 
+import { POWER_UP_KINDS } from '../config';
 import { fireCooldownFor, hitRadiusFor, maxDodgeCharges, ON_OPPONENT, STACKING } from '../sim/powerups';
 import { dodgeDirection } from '../sim/step';
 import type { Arena, GameEvent, GameState, PlayerIndex, PowerUp, PowerUpKind } from '../sim/types';
@@ -39,6 +40,8 @@ interface Callout {
 
 const CALLOUT_LIFE = 1.4;
 const NEAR_MISS_GLOW = 0.3;
+// Seconds before a timed effect ends that its ring starts blinking.
+const EFFECT_BLINK = 0.75;
 const NEAR_MISS_TEXT = ['Close!', 'Whew!', 'Too close!', 'Not today!', 'Missed me!'];
 
 // What a pickup says over the player who took it, and over the opponent for curses.
@@ -568,6 +571,26 @@ export class Renderer {
         ctx.arc(c.x, c.y, r + 6, 0, Math.PI * 2);
         ctx.stroke();
       }
+    }
+
+    // A ring per timed effect, coloured by category, that drains clockwise as
+    // it wears off and blinks in its last moments, so players can see when it
+    // will end. Round-long ones from a modifier never run out, so get none.
+    let ring = 0;
+    for (const kind of POWER_UP_KINDS) {
+      const left = p.effects[kind];
+      if (STACKING.has(kind) || left <= 0 || !Number.isFinite(left)) continue;
+      const frac = Math.min(1, left / (cfg.powerUps[kind] as { duration: number }).duration);
+      const radius = r + 12 + ring * 5;
+      ring++;
+      if (left < EFFECT_BLINK && Math.floor(state.tick / 4) % 2 === 0) continue;
+      ctx.strokeStyle = powerUpColor(kind);
+      ctx.lineWidth = 3;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, radius, -Math.PI / 2, -Math.PI / 2 + frac * Math.PI * 2);
+      ctx.stroke();
+      ctx.lineCap = 'butt';
     }
 
     if (p.effects.topsyTurvy > 0) {

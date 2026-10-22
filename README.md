@@ -55,7 +55,7 @@ Power-ups flash a ring where they're about to appear, and a ring around each one
 - **Blue** (temporary): Shield (absorbs the next hit), Rapid Fire (fire twice as fast), Bouncer (bullets bounce off a wall once), Ghost (walk through walls), Lead Shot (aim predicts where your opponent is going).
 - **Red** (curse on your opponent): Molasses (slows them), Topsy-Turvy (reverses their controls), Big Target (makes them easier to hit).
 
-A label pops up saying what each one did, and the icons under each player's health show what's active.
+A label pops up saying what each one did, and the icons under each player's health show what's active. Each blue or red effect also puts a ring of its colour round the player that drains as it wears off and blinks just before it ends, with a little blip when it's over.
 
 ## Round modifiers
 

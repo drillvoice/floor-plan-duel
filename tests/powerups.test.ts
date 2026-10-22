@@ -316,3 +316,18 @@ describe('v2 power-ups', () => {
     expect([...seen].sort()).toEqual([...CONFIG.powerUps.pool].sort());
   });
 });
+
+describe('effect timers', () => {
+  it('says once when a timed effect runs out', () => {
+    const s = playing(cfgWith([]));
+    applyPowerUp(s, 0, 'topsyTurvy');
+    const ended: number[] = [];
+    for (let i = 0; i < (CONFIG.powerUps.topsyTurvy.duration + 1) / DT; i++) {
+      step(s, [NO_INPUT, NO_INPUT]);
+      for (const e of s.events) if (e.type === 'effectEnded') ended.push(s.tick);
+      if (s.phase !== 'playing') break;
+    }
+    expect(s.players[1].effects.topsyTurvy).toBe(0);
+    expect(ended).toHaveLength(1);
+  });
+});

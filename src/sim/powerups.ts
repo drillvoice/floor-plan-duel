@@ -55,8 +55,15 @@ export function hitRadiusFor(p: PlayerState, cfg: Config): number {
 export function updatePowerUps(state: GameState, dt: number): void {
   const pc = state.cfg.powerUps;
 
-  for (const p of state.players) {
-    for (const k of POWER_UP_KINDS) if (!STACKING.has(k)) p.effects[k] = Math.max(0, p.effects[k] - dt);
+  for (const player of [0, 1] as const) {
+    const p = state.players[player];
+    for (const k of POWER_UP_KINDS) {
+      if (STACKING.has(k)) continue;
+      const before = p.effects[k];
+      p.effects[k] = Math.max(0, before - dt);
+      // Said once, as a timer runs out, so the sound can mark it.
+      if (before > EPS && p.effects[k] <= EPS) state.events.push({ type: 'effectEnded', player, kind: k });
+    }
   }
 
   state.nextPowerUpIn -= dt;

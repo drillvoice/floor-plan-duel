@@ -571,6 +571,21 @@ export class Renderer {
     }
 
     if (p.effects.topsyTurvy > 0) {
+      // A red ring that drains clockwise as the curse wears off, and blinks in
+      // its last moments, so the cursed player can see when controls flip back.
+      const left = p.effects.topsyTurvy;
+      const frac = Math.min(1, left / cfg.powerUps.topsyTurvy.duration);
+      const blinkOff = left < 0.75 && Math.floor(state.tick / 4) % 2 === 0;
+      if (!blinkOff) {
+        ctx.strokeStyle = CATEGORY_COLORS.curse;
+        ctx.lineWidth = 3;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.arc(c.x, c.y, r + 12, -Math.PI / 2, -Math.PI / 2 + frac * Math.PI * 2);
+        ctx.stroke();
+        ctx.lineCap = 'butt';
+      }
+
       // Flipped controls: the player wobbles.
       ctx.save();
       ctx.translate(c.x, c.y);

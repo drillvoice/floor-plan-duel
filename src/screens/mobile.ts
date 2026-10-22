@@ -168,9 +168,14 @@ export class MatchOverlay {
   }
 }
 
-// Phone-only play is for touch-only devices (a laptop with a touch screen
-// still has a keyboard). `?mobile` turns it on anywhere, for testing.
-export function isTouchOnly(): boolean {
-  if (new URLSearchParams(location.search).has('mobile')) return true;
-  return matchMedia('(pointer: coarse)').matches && !matchMedia('(any-pointer: fine)').matches;
+// Phone-only play is for devices whose main input is a finger. A laptop
+// with a touch screen reports its trackpad or mouse as the main pointer, so
+// it keeps the keyboard title screen. Some phones also claim a fine pointer
+// (stylus support, desktop-site mode), so only the main one counts.
+// `?mobile` turns it on anywhere and `?desktop` off, for testing.
+export function prefersTouch(): boolean {
+  const params = new URLSearchParams(location.search);
+  if (params.has('mobile')) return true;
+  if (params.has('desktop')) return false;
+  return matchMedia('(pointer: coarse)').matches;
 }

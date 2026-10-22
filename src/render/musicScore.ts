@@ -100,6 +100,64 @@ const MUZAK_CHORDS = [
   ...['Bbmaj7', 'Bbmaj7', 'Bbm7', 'Bbm7', 'Am7', 'Am7', 'D7', 'D7', 'Gm7', 'Gm7', 'C7', 'C7', 'Fmaj7', 'Fmaj7', 'C7', 'C7'],
 ];
 
+// "Lo-fi": a lazy, swung lo-fi hip-hop loop in C, a muffled keys melody over
+// descending seventh chords, for the studio flat.
+const LOFI_A: Note[][] = [
+  [['E6', 2], ['A5', 2], ['C6', 2], ['E6', 4], ['C6', 2], [null, 4]],
+  [['D6', 3], ['B5', 1], ['G5', 4], [null, 8]],
+  [[null, 2], ['F5', 2], ['A5', 2], ['C6', 4], ['A5', 2], ['F5', 2], ['A5', 2]],
+  [['G5', 6], ['E5', 2], [null, 8]],
+  [[null, 2], ['A5', 2], ['C6', 2], ['E6', 2], ['G6', 4], ['E6', 4]],
+  [['D6', 4], ['B5', 2], ['D6', 2], ['E6', 8]],
+  [['C6', 3], ['A5', 1], ['F5', 4], ['A5', 2], ['C6', 2], ['D6', 4]],
+  [['B5', 8], ['G5', 4], [null, 4]],
+];
+
+const LOFI_B: Note[][] = [
+  [['C6', 2], ['B5', 2], ['A5', 2], ['G5', 2], ['E5', 4], [null, 4]],
+  [['F5', 2], ['A5', 2], ['C6', 2], ['D6', 2], ['C6', 4], ['A5', 4]],
+  [['B5', 4], ['D6', 2], ['F6', 2], ['D6', 4], ['B5', 4]],
+  [['C6', 8], ['G5', 2], ['E5', 2], [null, 4]],
+  [['A5', 3], ['C6', 1], ['E6', 4], ['D6', 2], ['C6', 2], ['A5', 4]],
+  [['G5', 4], ['B5', 4], ['C6', 4], ['E6', 4]],
+  [['F6', 4], ['E6', 2], ['D6', 2], ['C6', 4], ['A5', 4]],
+  [['B5', 4], ['D6', 4], ['G5', 4], [null, 4]],
+];
+
+const LOFI_CHORDS = [
+  ...['Fmaj7', 'Fmaj7', 'Em7', 'Em7', 'Dm7', 'Dm7', 'Cmaj7', 'Cmaj7', 'Fmaj7', 'Fmaj7', 'Em7', 'Em7', 'Dm7', 'Dm7', 'G7', 'G7'],
+  ...['Am7', 'Am7', 'Dm7', 'Dm7', 'G7', 'G7', 'Cmaj7', 'Cmaj7', 'Fmaj7', 'Fmaj7', 'Em7', 'Am7', 'Dm7', 'Dm7', 'G7', 'G7'],
+];
+
+// "Surf": a twangy, tremolo-picked surf-rock tune in E minor for the bathroom,
+// with a raised D# on the B chord for that exotic surf sound.
+const SURF_A: Note[][] = [
+  [['E5', 4], ['G5', 4], ['B5', 4], ['G5', 4]],
+  [['A5', 2], ['G5', 2], ['F#5', 2], ['G5', 2], ['E5', 8]],
+  [['E5', 4], ['G5', 4], ['C6', 6], ['B5', 2]],
+  [['B5', 8], ['A5', 2], ['G5', 2], ['F#5', 4]],
+  [['E6', 4], ['D6', 2], ['B5', 2], ['G5', 4], ['B5', 4]],
+  [['A5', 2], ['G5', 2], ['F#5', 2], ['E5', 2], ['D#5', 4], ['E5', 4]],
+  [['G5', 4], ['E5', 4], ['F#5', 4], ['A5', 4]],
+  [['D#5', 4], ['F#5', 4], ['B5', 8]],
+];
+
+const SURF_B: Note[][] = [
+  [['A5', 2], ['C6', 2], ['E6', 4], ['C6', 2], ['A5', 2], ['E5', 4]],
+  [['G5', 2], ['B5', 2], ['E6', 8], [null, 4]],
+  [['A5', 2], ['C6', 2], ['E6', 2], ['A6', 2], ['G6', 2], ['E6', 2], ['C6', 4]],
+  [['D#6', 8], ['B5', 4], [null, 4]],
+  [['E6', 2], ['D6', 2], ['C6', 2], ['G5', 2], ['E5', 4], ['G5', 4]],
+  [['D6', 2], ['B5', 2], ['G5', 2], ['D5', 2], ['G5', 8]],
+  [['C6', 4], ['A5', 4], ['B5', 4], ['D#6', 4]],
+  [['E6', 12], [null, 4]],
+];
+
+const SURF_CHORDS = [
+  ...['Em', 'Em', 'Em', 'Em', 'C', 'C', 'B', 'B', 'Em', 'Em', 'Em', 'Em', 'C', 'D', 'B', 'B'],
+  ...['Am', 'Am', 'Em', 'Em', 'Am', 'Am', 'B', 'B', 'C', 'C', 'G', 'G', 'Am', 'B', 'Em', 'Em'],
+];
+
 const NOTE_INDEX: Record<string, number> = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
 
 // MIDI number for a name like "C5", "F#4" or "Bb3".
@@ -140,4 +198,6 @@ export const SCORES: Record<MusicStyle, Score> = {
   bouncy: score([...BOUNCY_A, ...BOUNCY_B], BOUNCY_CHORDS),
   spooky: score([...SPOOKY_A, ...SPOOKY_B], SPOOKY_CHORDS),
   muzak: score([...MUZAK_A, ...MUZAK_B], MUZAK_CHORDS),
+  lofi: score([...LOFI_A, ...LOFI_B], LOFI_CHORDS),
+  surf: score([...SURF_A, ...SURF_B], SURF_CHORDS),
 };

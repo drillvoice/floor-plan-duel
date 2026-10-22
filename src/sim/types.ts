@@ -34,7 +34,7 @@ export interface MapData {
   music?: MusicStyle; // background music while it's played; see musicStyle()
 }
 
-export const MUSIC_STYLES = ['bouncy', 'spooky', 'muzak'] as const;
+export const MUSIC_STYLES = ['bouncy', 'spooky', 'muzak', 'lofi', 'surf'] as const;
 export type MusicStyle = (typeof MUSIC_STYLES)[number];
 
 // The music a map plays: its own pick, else spooky in the dark, else bouncy.

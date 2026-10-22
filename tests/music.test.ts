@@ -38,11 +38,13 @@ describe('music scores', () => {
 });
 
 describe('map music', () => {
-  it('gives the office muzak and the dark spooky music', () => {
+  it('gives each built-in map its own tune, and dark maps spooky music', () => {
     const style = (name: string) => musicStyle(BUILT_IN_MAPS.find((m) => m.name === name)!);
     expect(style('The Office')).toBe('muzak');
     expect(style('Lights Out')).toBe('spooky');
     expect(style('The Flat')).toBe('bouncy');
+    expect(style('Studio Apartment')).toBe('lofi');
+    expect(style('Bathroom Brawl')).toBe('surf');
     expect(musicStyle({ dark: true, music: 'muzak' })).toBe('muzak');
   });
 

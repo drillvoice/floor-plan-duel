@@ -4,6 +4,7 @@
 // its controls; the game itself runs on the desktop.
 
 import type { DataConnection, Peer } from 'peerjs';
+import { TouchControls, touchCss } from '../input/touch';
 import { cycleLook, LOOKS } from '../render/looks';
 import {
   cleanName,
@@ -18,11 +19,6 @@ import { el } from '../screens/dom';
 
 const SEND_EVERY = 50; // ms between messages when nothing changes
 const HOST_TIMEOUT = 3000; // ms without word from the desktop before reconnecting
-// Joystick: how far the thumb travels, the dead zone in the middle, and
-// how far out counts as full speed (so you don't have to push to the rim).
-const STICK_RADIUS = 56; // px
-const DEAD_ZONE = 0.12;
-const FULL_TILT = 0.75;
 
 const ID_KEY = 'fpd.pad.id';
 const NAME_KEY = 'fpd.pad.name';
@@ -55,7 +51,7 @@ export function startController(joinParam: string): void {
   document.getElementById('fullscreen')?.remove();
   // A controller should never zoom on a double tap.
   document.querySelector('meta[name=viewport]')?.setAttribute('content', 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover');
-  document.head.append(el('style', { textContent: CSS }));
+  document.head.append(el('style', { textContent: CSS + touchCss('#pad-root') }));
   document.addEventListener('contextmenu', (e) => e.preventDefault());
 
   const id = stored(ID_KEY) ?? randomId();
@@ -217,108 +213,23 @@ export function startController(joinParam: string): void {
 
   // --- Controls -----------------------------------------------------------
 
+  let controls: TouchControls | null = null;
+
   // Lets go of everything, e.g. when the page is hidden mid-press.
   function release(): void {
-    pad.x = 0;
-    pad.y = 0;
-    pad.shoot = false;
-    stick = null;
-    shootPointer = null;
+    if (controls) controls.release();
+    else {
+      pad.x = 0;
+      pad.y = 0;
+      pad.shoot = false;
+    }
     send();
   }
 
-  let stick: { pointer: number; ox: number; oy: number } | null = null;
-  let shootPointer: number | null = null;
-
   function buildPad(h: HostMessage, slot: PlayerIndex): HTMLElement {
     const color = h.colors[slot];
-    const zone = el('div', { className: 'stick-zone' });
-    const base = el('div', { className: 'stick-base' });
-    const knob = el('div', { className: 'stick-knob' });
-    base.append(knob);
-    zone.append(base, el('div', { className: 'zone-label', textContent: 'move' }));
-    const placeBase = (x: number, y: number) => {
-      const r = zone.getBoundingClientRect();
-      base.style.left = `${x - r.left}px`;
-      base.style.top = `${y - r.top}px`;
-    };
-    const setKnob = (dx: number, dy: number) => (knob.style.transform = `translate(${dx}px, ${dy}px)`);
-    zone.addEventListener('pointerdown', (e) => {
-      if (stick) return;
-      zone.setPointerCapture(e.pointerId);
-      stick = { pointer: e.pointerId, ox: e.clientX, oy: e.clientY };
-      placeBase(e.clientX, e.clientY);
-      base.classList.add('active');
-      setKnob(0, 0);
-    });
-    zone.addEventListener('pointermove', (e) => {
-      if (!stick || e.pointerId !== stick.pointer) return;
-      let dx = e.clientX - stick.ox;
-      let dy = e.clientY - stick.oy;
-      const d = Math.hypot(dx, dy);
-      if (d > STICK_RADIUS) {
-        // Past the rim, the stick follows the thumb so reversing is instant.
-        stick.ox += (dx * (d - STICK_RADIUS)) / d;
-        stick.oy += (dy * (d - STICK_RADIUS)) / d;
-        placeBase(stick.ox, stick.oy);
-        dx = e.clientX - stick.ox;
-        dy = e.clientY - stick.oy;
-      }
-      setKnob(dx, dy);
-      const tilt = Math.min(1, Math.hypot(dx, dy) / STICK_RADIUS);
-      const speed = tilt < DEAD_ZONE ? 0 : Math.min(1, (tilt - DEAD_ZONE) / (FULL_TILT - DEAD_ZONE));
-      const len = Math.hypot(dx, dy) || 1;
-      const nx = (dx / len) * speed;
-      const ny = (dy / len) * speed;
-      if (nx !== pad.x || ny !== pad.y) {
-        pad.x = nx;
-        pad.y = ny;
-        send();
-      }
-    });
-    const endStick = (e: PointerEvent) => {
-      if (!stick || e.pointerId !== stick.pointer) return;
-      stick = null;
-      base.classList.remove('active');
-      base.style.left = '';
-      base.style.top = '';
-      setKnob(0, 0);
-      pad.x = 0;
-      pad.y = 0;
-      send();
-    };
-    zone.addEventListener('pointerup', endStick);
-    zone.addEventListener('pointercancel', endStick);
-
-    const dodge = el('button', { className: 'btn dodge', type: 'button', textContent: 'Dodge' });
-    dodge.addEventListener('pointerdown', (e) => {
-      e.preventDefault();
-      pad.dodges++;
-      send();
-      dodge.classList.add('down');
-      navigator.vibrate?.(10);
-    });
-    const shoot = el('button', { className: 'btn shoot', type: 'button', textContent: 'Shoot' });
-    shoot.style.background = color;
-    shoot.addEventListener('pointerdown', (e) => {
-      e.preventDefault();
-      shoot.setPointerCapture(e.pointerId);
-      shootPointer = e.pointerId;
-      pad.shoot = true;
-      pad.shots++;
-      send();
-      shoot.classList.add('down');
-    });
-    const endShoot = (e: PointerEvent) => {
-      if (e.pointerId !== shootPointer) return;
-      shootPointer = null;
-      pad.shoot = false;
-      send();
-      shoot.classList.remove('down');
-    };
-    shoot.addEventListener('pointerup', endShoot);
-    shoot.addEventListener('pointercancel', endShoot);
-    for (const t of ['pointerup', 'pointercancel', 'pointerleave'] as const) dodge.addEventListener(t, () => dodge.classList.remove('down'));
+    controls = new TouchControls(pad, color, send);
+    const { zone, buttons } = controls;
 
     const pause = el('button', { className: 'pause', type: 'button', textContent: h.screen === 'paused' ? '▶' : '❚❚', ariaLabel: 'Pause' });
     pause.addEventListener('click', () => {
@@ -331,7 +242,7 @@ export function startController(joinParam: string): void {
     const screen = el('div', { className: 'pad' }, [
       el('div', { className: 'top' }, [tag, pause]),
       zone,
-      el('div', { className: 'buttons' }, [dodge, shoot]),
+      buttons,
     ]);
     screen.style.setProperty('--player', color);
     if (h.screen === 'paused') screen.append(el('div', { className: 'paused', textContent: 'Paused' }));
@@ -623,86 +534,6 @@ body.pad-page {
 #pad-root .pause {
   padding: 8px 16px;
   font-size: 14px;
-}
-#pad-root .stick-zone {
-  position: relative;
-  touch-action: none;
-}
-#pad-root .zone-label {
-  position: absolute;
-  left: 50%;
-  bottom: 14px;
-  transform: translateX(-50%);
-  color: #8b90a0;
-  font-size: 13px;
-  pointer-events: none;
-}
-#pad-root .stick-base {
-  position: absolute;
-  left: 50%;
-  top: 55%;
-  width: ${STICK_RADIUS * 2}px;
-  height: ${STICK_RADIUS * 2}px;
-  margin: -${STICK_RADIUS}px 0 0 -${STICK_RADIUS}px;
-  border-radius: 50%;
-  border: 2px solid rgba(255, 255, 255, 0.18);
-  background: rgba(255, 255, 255, 0.04);
-  opacity: 0.5;
-  pointer-events: none;
-}
-#pad-root .stick-base.active {
-  opacity: 1;
-}
-#pad-root .stick-knob {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 56px;
-  height: 56px;
-  margin: -28px 0 0 -28px;
-  border-radius: 50%;
-  background: var(--player);
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
-}
-#pad-root .buttons {
-  position: relative;
-  touch-action: none;
-}
-#pad-root .btn {
-  position: absolute;
-  border-radius: 50%;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  touch-action: none;
-  padding: 0;
-}
-#pad-root .btn.shoot {
-  right: 8%;
-  bottom: 14%;
-  width: min(36vmin, 170px);
-  height: min(36vmin, 170px);
-  color: #16181f;
-  font-size: 20px;
-  border: none;
-}
-#pad-root .btn.dodge {
-  right: calc(8% + min(36vmin, 170px) + 4%);
-  bottom: calc(14% + min(18vmin, 85px));
-  width: min(26vmin, 120px);
-  height: min(26vmin, 120px);
-  font-size: 16px;
-  border: 2px solid rgba(255, 255, 255, 0.3);
-}
-@media (orientation: portrait) {
-  #pad-root .btn.dodge {
-    right: calc(8% + min(5vmin, 24px));
-    bottom: calc(14% + min(36vmin, 170px) + 5vmin);
-  }
-}
-#pad-root .btn.down {
-  transform: scale(0.92);
-  filter: brightness(1.25);
 }
 #pad-root .paused {
   position: absolute;

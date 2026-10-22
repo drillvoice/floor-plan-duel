@@ -179,7 +179,9 @@ The MVP proves one thing: dodging slow auto-aimed bullets on a shared laptop is 
 - **Hotseat mode (done):** still 1v1, but for a group taking turns. Players enter their names, the loser of each match swaps out for the next person in the queue, and a scoreboard tracks who's playing and everyone's wins.
 - **Photo looks:** use a picture of your face inside your player circle, alongside the icon looks.
 
-**v3** — mobile touch controls and two-phone play over a small relay server; maybe a first-person mode rendered from the same walls.
+- **Phone play (done):** on a touch-only device the game runs entirely on the phone against a bot. Landscape, with the whole arena scaled to fill the screen under a one-row HUD, and the controller's joystick, Dodge and Shoot laid see-through over the bottom corners (the same `TouchControls` code as phone controllers). Desktops are unaffected.
+
+**v3** — two-phone play over a small relay server; maybe a first-person mode rendered from the same walls.
 
 **Open questions**
 

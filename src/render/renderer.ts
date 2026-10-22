@@ -30,9 +30,41 @@ const MARGIN = 24;
 const SIDE_MIN = 150;
 const SIDE_MAX = 260;
 const SIDE_GAP = 16;
+// Phone-only play: a slim HUD along the top and the arena filling the rest.
+const COMPACT_HUD = 34;
+const COMPACT_MARGIN = 6;
+// Overlay text is sized for this window height and shrinks on shorter ones.
+const COMPACT_UI_HEIGHT = 560;
 // Smallest window the title screen fits at full size.
 const TITLE_MIN_H = 540;
 const TITLE_MIN_W = 820;
+
+export interface ArenaLayout {
+  scale: number; // pixels per unit
+  origin: Vec2; // the arena's top-left corner on screen
+  sideW: number; // width of each player's status column (none when compact)
+}
+
+// Where the arena goes in a window. Normally it sits between the two
+// players' status columns; compact (phone-only) gives it the whole width.
+export function arenaLayout(width: number, height: number, arena: { width: number; height: number }, compact: boolean): ArenaLayout {
+  const { width: aw, height: ah } = arena;
+  if (compact) {
+    const availW = width - COMPACT_MARGIN * 2;
+    const availH = height - COMPACT_HUD - COMPACT_MARGIN * 2;
+    const scale = Math.max(4, Math.min(availW / aw, availH / ah));
+    return {
+      scale,
+      origin: { x: (width - aw * scale) / 2, y: COMPACT_HUD + COMPACT_MARGIN + (availH - ah * scale) / 2 },
+      sideW: 0,
+    };
+  }
+  const availW = width - (SIDE_MIN + SIDE_GAP * 2) * 2;
+  const availH = height - HUD_HEIGHT - MARGIN * 2;
+  const scale = Math.max(4, Math.min(availW / aw, availH / ah));
+  const origin = { x: (width - aw * scale) / 2, y: HUD_HEIGHT + MARGIN + (availH - ah * scale) / 2 };
+  return { scale, origin, sideW: Math.max(SIDE_MIN * 0.75, Math.min(SIDE_MAX, origin.x - SIDE_GAP * 2)) };
+}
 
 interface Particle {
   pos: Vec2;
@@ -170,6 +202,9 @@ export class Renderer {
   // Names shown in the HUD and results (player names in hotseat).
   names: [string, string] = ['P1', 'P2'];
   matchOverHint = 'Enter for a rematch · Esc for title';
+  pausedHint = 'Esc to resume · Q to quit to title';
+  // Phone-only play: slim HUD, arena as big as the screen allows.
+  compact = false;
 
   constructor(private canvas: HTMLCanvasElement) {
     this.ctx = canvas.getContext('2d')!;
@@ -323,15 +358,12 @@ export class Renderer {
   }
 
   private layout(state: GameState): void {
-    const { width: aw, height: ah } = state.arena;
-    const availW = this.width - (SIDE_MIN + SIDE_GAP * 2) * 2;
-    const availH = this.height - HUD_HEIGHT - MARGIN * 2;
-    this.scale = Math.max(4, Math.min(availW / aw, availH / ah));
-    this.origin = {
-      x: (this.width - aw * this.scale) / 2,
-      y: HUD_HEIGHT + MARGIN + (availH - ah * this.scale) / 2,
-    };
-    this.sideW = Math.max(SIDE_MIN * 0.75, Math.min(SIDE_MAX, this.origin.x - SIDE_GAP * 2));
+    ({ scale: this.scale, origin: this.origin, sideW: this.sideW } = arenaLayout(this.width, this.height, state.arena, this.compact));
+  }
+
+  // How much to shrink overlay text: 1 except on a short phone screen.
+  private get ui(): number {
+    return this.compact ? Math.min(1, this.height / COMPACT_UI_HEIGHT) : 1;
   }
 
   private toScreen(p: Vec2): Vec2 {
@@ -364,16 +396,17 @@ export class Renderer {
     this.drawHud(state);
     if (this.suddenDeathBanner > 0 && state.phase === 'playing') {
       const a = Math.min(1, this.suddenDeathBanner / 0.5);
+      const u = this.ui;
       ctx.fillStyle = `rgba(10,11,15,${0.6 * a})`;
-      ctx.fillRect(0, this.height / 2 - 60, this.width, 124);
+      ctx.fillRect(0, this.height / 2 - 60 * u, this.width, 124 * u);
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillStyle = hexAlpha(TIMER_RED, a);
-      ctx.font = '900 64px system-ui, sans-serif';
-      ctx.fillText('SUDDEN DEATH', this.width / 2, this.height / 2 - 10);
+      ctx.font = `900 ${64 * u}px system-ui, sans-serif`;
+      ctx.fillText('SUDDEN DEATH', this.width / 2, this.height / 2 - 10 * u);
       ctx.fillStyle = `rgba(242,239,232,${a})`;
-      ctx.font = '600 20px system-ui, sans-serif';
-      ctx.fillText('Bullets speed up every 5 seconds', this.width / 2, this.height / 2 + 36);
+      ctx.font = `600 ${20 * u}px system-ui, sans-serif`;
+      ctx.fillText('Bullets speed up every 5 seconds', this.width / 2, this.height / 2 + 36 * u);
     }
     this.drawOverlay(state, paused);
   }
@@ -746,6 +779,10 @@ export class Renderer {
   }
 
   private drawHud(state: GameState): void {
+    if (this.compact) {
+      this.drawCompactHud(state);
+      return;
+    }
     const ctx = this.ctx;
     const cfg = state.cfg;
     ctx.textBaseline = 'middle';
@@ -780,6 +817,135 @@ export class Renderer {
       ctx.fillText(`Round ${state.roundIndex + 1} · ${MODIFIERS[state.modifier].name}`, this.width / 2, 50);
     } else {
       ctx.fillText(`Round ${state.roundIndex + 1}`, this.width / 2, 50);
+    }
+  }
+
+  // Phone-only HUD: one slim row along the top. The timer sits in the
+  // middle; each player's look, name, health, round wins and power-ups run
+  // outwards from it, P2's mirroring P1's.
+  private drawCompactHud(state: GameState): void {
+    const ctx = this.ctx;
+    const cfg = state.cfg;
+    const cx = this.width / 2;
+    const mid = COMPACT_HUD / 2 + 1;
+    ctx.textBaseline = 'middle';
+
+    const left = cfg.round.timeLimit - state.roundTime;
+    const sudden = left <= 0;
+    const pulse = 0.55 + 0.45 * Math.abs(Math.sin(state.tick * 0.12));
+    const timerColor = sudden || left <= 10 ? TIMER_RED : left <= 30 ? TIMER_AMBER : COLORS.text;
+    const barY = this.origin.y - 4;
+    const barW = state.arena.width * this.scale;
+    ctx.fillStyle = 'rgba(255,255,255,0.08)';
+    ctx.fillRect(this.origin.x, barY, barW, 3);
+    ctx.globalAlpha = sudden || left <= 10 ? pulse : 1;
+    ctx.fillStyle = timerColor;
+    const frac = sudden ? 1 : Math.max(0, left / cfg.round.timeLimit);
+    ctx.fillRect(this.origin.x + (barW * (1 - frac)) / 2, barY, barW * frac, 3);
+    ctx.globalAlpha = 1;
+
+    ctx.textAlign = 'center';
+    ctx.fillStyle = timerColor;
+    ctx.font = '800 18px system-ui, sans-serif';
+    ctx.fillText(sudden ? `SUDDEN ×${suddenDeathMultiplier(state).toFixed(2)}` : `${Math.ceil(left)}`, cx, 12);
+    const modifier = state.modifier && state.phase !== 'countdown' ? MODIFIERS[state.modifier].name : '';
+    ctx.fillStyle = modifier ? MODIFIER_COLOR : COLORS.muted;
+    ctx.font = `${modifier ? 700 : 500} 10px system-ui, sans-serif`;
+    const roundLabel = modifier ? `Round ${state.roundIndex + 1} · ${modifier}` : `Round ${state.roundIndex + 1}`;
+    ctx.fillText(roundLabel, cx, 28);
+    const centreHalf = Math.max(48, ctx.measureText(roundLabel).width / 2 + 10);
+
+    for (const i of [0, 1] as const) {
+      const p = state.players[i];
+      const dir = i === 0 ? -1 : 1;
+      let x = cx + dir * centreHalf;
+      // Claims the next `w` pixels outwards and returns their centre.
+      const next = (w: number, gap = 8) => {
+        const c = x + (dir * w) / 2;
+        x += dir * (w + gap);
+        return c;
+      };
+
+      const wins = cfg.round.roundsToWin;
+      const winR = 4;
+      const winsW = wins * winR * 2 + (wins - 1) * 4;
+      // Won rounds fill in from the middle of the HUD outwards.
+      const winsInner = next(winsW) - (dir * winsW) / 2;
+      ctx.strokeStyle = COLORS.text;
+      ctx.fillStyle = COLORS.text;
+      ctx.lineWidth = 1.5;
+      for (let n = 0; n < wins; n++) {
+        const wx = winsInner + dir * (winR + n * (winR * 2 + 4));
+        ctx.beginPath();
+        ctx.arc(wx, mid, winR, 0, Math.PI * 2);
+        if (n < p.roundWins) ctx.fill();
+        else ctx.stroke();
+      }
+
+      const hits = cfg.round.hitsToLose;
+      const pipD = 12;
+      const pipsW = hits * pipD + (hits - 1) * 4;
+      const pipsX = next(pipsW);
+      for (let h = 0; h < hits; h++) {
+        const alive = h < hits - p.hits;
+        const px = pipsX - pipsW / 2 + pipD / 2 + h * (pipD + 4);
+        ctx.beginPath();
+        ctx.arc(px, mid, pipD / 2 - 1, 0, Math.PI * 2);
+        if (alive) {
+          ctx.fillStyle = COLORS.players[i];
+          ctx.fill();
+        } else {
+          ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+          ctx.lineWidth = 2;
+          ctx.stroke();
+        }
+      }
+
+      const name = this.names[i];
+      let size = 14;
+      ctx.font = `800 ${size}px system-ui, sans-serif`;
+      const nameW = Math.min(90, ctx.measureText(name).width);
+      size *= nameW / Math.max(1, ctx.measureText(name).width);
+      ctx.font = `800 ${size}px system-ui, sans-serif`;
+      ctx.fillStyle = COLORS.players[i];
+      ctx.textAlign = 'center';
+      ctx.fillText(name, next(nameW, 6), mid);
+
+      const r = 11;
+      const lookX = next(r * 2, 10);
+      ctx.fillStyle = COLORS.players[i];
+      ctx.beginPath();
+      ctx.arc(lookX, mid, r, 0, Math.PI * 2);
+      ctx.fill();
+      if (this.looks[i]) drawLook(ctx, this.looks[i], lookX, mid, r);
+
+      // Active power-ups, as far as the screen edge allows. Timed ones drain
+      // a ring; stacks show a count.
+      const iconR = 9;
+      for (const kind of POWER_UP_KINDS) {
+        const amount = p.effects[kind];
+        if (amount <= 0) continue;
+        if (dir < 0 ? x - iconR * 2 < 4 : x + iconR * 2 > this.width - 4) break;
+        const ix = next(iconR * 2, 7);
+        const color = CATEGORY_COLORS[POWER_UP_CATEGORY[kind]];
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(ix, mid, iconR, 0, Math.PI * 2);
+        ctx.fill();
+        drawPowerUpGlyph(ctx, kind, ix, mid, iconR * 1.2);
+        const duration = (cfg.powerUps[kind] as { duration?: number }).duration;
+        if (!STACKING.has(kind) && duration) {
+          ctx.strokeStyle = color;
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(ix, mid, iconR + 3, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, amount / duration));
+          ctx.stroke();
+        } else if (STACKING.has(kind) && amount > 1) {
+          ctx.fillStyle = COLORS.text;
+          ctx.font = '800 9px system-ui, sans-serif';
+          ctx.fillText(`×${amount}`, ix + iconR * 0.8, mid + iconR);
+        }
+      }
     }
   }
 
@@ -902,7 +1068,7 @@ export class Renderer {
     let sub = '';
     if (paused) {
       title = 'Paused';
-      sub = 'Esc to resume · Q to quit to title';
+      sub = this.pausedHint;
     } else if (state.phase === 'countdown' && state.modifier) {
       this.drawModifierReel(state);
       return;
@@ -925,16 +1091,19 @@ export class Renderer {
     ctx.textBaseline = 'middle';
     const winner = state.phase === 'matchOver' ? state.matchWinner : state.phase === 'roundOver' ? state.lastRoundWinner : null;
     ctx.fillStyle = winner !== null && !paused ? COLORS.players[winner] : COLORS.text;
-    ctx.font = '800 52px system-ui, sans-serif';
-    ctx.fillText(title, this.width / 2, this.height / 2 - 16);
+    const u = this.ui;
+    // On a phone the buttons go under the text, so lift it.
+    const cy = this.height / 2 - (this.compact ? 40 * u : 0);
+    ctx.font = `800 ${52 * u}px system-ui, sans-serif`;
+    ctx.fillText(title, this.width / 2, cy - 16 * u);
     ctx.fillStyle = COLORS.text;
-    ctx.font = '500 18px system-ui, sans-serif';
-    ctx.fillText(sub, this.width / 2, this.height / 2 + 32);
+    ctx.font = `500 ${18 * u}px system-ui, sans-serif`;
+    ctx.fillText(sub, this.width / 2, cy + 32 * u);
     if (state.phase === 'matchOver' && !paused) {
       const [a, b] = state.players.map((p) => p.nearMisses);
       ctx.fillStyle = NEAR_MISS_COLOR;
-      ctx.font = '600 16px system-ui, sans-serif';
-      ctx.fillText(`Clutch dodges: ${this.names[0]} ${a} · ${this.names[1]} ${b}`, this.width / 2, this.height / 2 + 68);
+      ctx.font = `600 ${16 * u}px system-ui, sans-serif`;
+      ctx.fillText(`Clutch dodges: ${this.names[0]} ${a} · ${this.names[1]} ${b}`, this.width / 2, cy + (sub ? 68 : 36) * u);
     }
   }
 
@@ -952,6 +1121,12 @@ export class Renderer {
     const cy = this.height / 2;
     ctx.fillStyle = 'rgba(10,11,15,0.6)';
     ctx.fillRect(0, 0, this.width, this.height);
+    // Shrunk as a whole on a short phone screen.
+    const u = this.ui;
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.scale(u, u);
+    ctx.translate(-cx, -cy);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = COLORS.text;
@@ -964,7 +1139,7 @@ export class Renderer {
     }
 
     // The reel window.
-    const w = Math.min(560, this.width - 40);
+    const w = Math.min(560, (this.width - 40) / u);
     const h = 96;
     ctx.save();
     ctx.fillStyle = 'rgba(255,255,255,0.06)';
@@ -999,6 +1174,7 @@ export class Renderer {
       ctx.font = '500 16px system-ui, sans-serif';
       ctx.fillText('Get ready', cx, cy + 104);
     }
+    ctx.restore();
   }
 
   // Plain background behind HTML screens such as the hotseat lobby.

@@ -94,6 +94,17 @@ Players can join on their phones instead of sharing the keyboard. Press **P** on
 
 Phones connect straight to the computer with WebRTC. The free [PeerJS](https://peerjs.com) server introduces them, so both need internet access to join; after that the controls go directly between them, over the local network when they share one. The phones must be able to open the same address as the computer, so use the deployed site, or for local testing run `npm run dev -- --host` and open the network address it prints rather than `localhost`.
 
+## Play on a phone
+
+Open the site on a phone and it shows a touch menu instead of the keyboard title screen: you play against a bot, with everything on the phone's own screen.
+
+- Pick a look, a name, the bot's difficulty (Easy, Normal, Hard) and the map, and turn map rotation, round modifiers, sound and music on or off. Then tap **Play** and turn the phone sideways.
+- The whole arena fills the screen under a slim score bar. Put your thumb down anywhere on the left half for a joystick; **Dodge** and **Shoot** sit see-through in the bottom right. The phone buzzes when you're hit.
+- **❚❚** in the top-left corner pauses, with Resume and Quit. Holding the phone upright or switching apps pauses too. At the end of a match, **Rematch** or **Menu**.
+- It works offline once the site has been opened. To use the phone as a controller for a big screen instead, tap the link under Play.
+
+Only touch-only devices get this menu; computers, including ones with a touch screen, get the usual title screen. Add `?mobile` to the address to try it on a computer.
+
 ## Map editor
 
 Press **E** on the title screen.
@@ -125,7 +136,7 @@ All tunable numbers live in `src/config.ts`.
 ## Code layout
 
 - `src/sim/`: the game rules. A pure fixed 60 Hz `step(state, inputs)` with a seeded RNG and no DOM or clock, so a match is reproducible from its seed and inputs.
-- `src/input/`: keyboard input. `src/bot/`: the bot and A* pathfinding. Both produce the same `{ move, dodge, shoot }` input.
+- `src/input/`: keyboard and touch input (`touch.ts` is shared by phone controllers and phone play). `src/bot/`: the bot and A* pathfinding. Both produce the same `{ move, dodge, shoot }` input.
 - `src/render/`: canvas drawing, effects and synthesised sound. Never changes game state.
 - `src/screens/editor.ts`, `src/maps/`: the editor, the built-in maps, validation and storage.
 - `scripts/sim.ts`: the headless simulator.

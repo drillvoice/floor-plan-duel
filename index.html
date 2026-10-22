@@ -431,6 +431,190 @@
       #phones button.primary:hover {
         background: #95e573;
       }
+      #mobile {
+        position: fixed;
+        inset: 0;
+        overflow-y: auto;
+        display: flex;
+        justify-content: center;
+        align-items: flex-start;
+        padding: 16px;
+        box-sizing: border-box;
+        font: 15px system-ui, sans-serif;
+        color: #f2efe8;
+        -webkit-tap-highlight-color: transparent;
+      }
+      #mobile[hidden],
+      #touch[hidden],
+      #touch .pad[hidden] {
+        display: none;
+      }
+      #mobile .panel {
+        width: 100%;
+        max-width: 760px;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        gap: 12px 24px;
+        margin: auto 0;
+      }
+      #mobile .col {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      #mobile h1 {
+        font-size: 30px;
+        font-weight: 800;
+        margin: 0;
+      }
+      #mobile .sub,
+      #mobile .label,
+      #mobile .controller {
+        color: #8b90a0;
+        margin: 0;
+        font-size: 14px;
+      }
+      #mobile .label {
+        margin-top: 4px;
+      }
+      #mobile button,
+      #mobile input,
+      #touch button {
+        font: inherit;
+        color: #f2efe8;
+        background: #262a35;
+        border: 1px solid #3a3f4d;
+        border-radius: 10px;
+        padding: 10px 14px;
+      }
+      #mobile input {
+        flex: 1;
+        min-width: 0;
+        font-size: 16px;
+      }
+      #mobile button.on {
+        border-color: #7ed957;
+        color: #7ed957;
+      }
+      #mobile button.primary,
+      #touch button.primary {
+        background: #7ed957;
+        border-color: #7ed957;
+        color: #16181f;
+        font-weight: 800;
+      }
+      #mobile .play {
+        font-size: 22px;
+        padding: 14px;
+      }
+      #mobile .look-row,
+      #mobile .map-row,
+      #mobile .choices {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      #mobile .choices button {
+        flex: 1;
+      }
+      #mobile .arrow {
+        flex: none;
+        width: 44px;
+        padding: 10px 0;
+      }
+      #mobile .face {
+        flex: none;
+        width: 48px;
+        height: 48px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        font-size: 28px;
+      }
+      #mobile .map-name {
+        flex: 1;
+        text-align: center;
+        font-weight: 600;
+      }
+      #touch {
+        position: fixed;
+        inset: 0;
+        font: 15px system-ui, sans-serif;
+        color: #f2efe8;
+        -webkit-user-select: none;
+        user-select: none;
+        -webkit-touch-callout: none;
+        -webkit-tap-highlight-color: transparent;
+        touch-action: none;
+      }
+      #touch .pad {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+      }
+      #touch .zone-label {
+        opacity: 0.5;
+      }
+      /* Smaller and see-through, so they cover as little of the arena as possible. */
+      #touch .btn {
+        opacity: 0.6;
+      }
+      #touch .btn.shoot {
+        right: 3%;
+        bottom: 10%;
+        width: min(28vmin, 130px);
+        height: min(28vmin, 130px);
+        font-size: 16px;
+      }
+      #touch .btn.dodge {
+        right: calc(3% + min(28vmin, 130px) + 2%);
+        bottom: calc(10% + min(14vmin, 65px));
+        width: min(20vmin, 96px);
+        height: min(20vmin, 96px);
+        font-size: 13px;
+        background: rgba(255, 255, 255, 0.08);
+      }
+      #touch .pause {
+        position: absolute;
+        top: 4px;
+        left: 4px;
+        padding: 4px 12px;
+        font-size: 13px;
+        opacity: 0.8;
+      }
+      #touch .actions {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 62%;
+        display: flex;
+        justify-content: center;
+        gap: 12px;
+      }
+      #touch .actions button {
+        min-width: 130px;
+        font-size: 18px;
+        padding: 12px 18px;
+      }
+      #touch .rotate {
+        display: none;
+      }
+      @media (orientation: portrait) {
+        #touch .rotate {
+          position: absolute;
+          inset: 0;
+          display: grid;
+          place-content: center;
+          text-align: center;
+          background: #16181f;
+          font-size: 20px;
+          font-weight: 700;
+        }
+        #touch .rotate-icon {
+          font-size: 56px;
+        }
+      }
     </style>
   </head>
   <body>

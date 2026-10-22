@@ -1,6 +1,6 @@
 import type { Config } from '../config';
 import { buildGrid } from './grid';
-import type { Arena, MapData, Wall } from './types';
+import { type Arena, type MapData, musicStyle, type Wall } from './types';
 import { distPointSegment, distSegmentSegment, type Vec2 } from './vec';
 
 export function buildArena(map: MapData, cfg: Config): Arena {
@@ -19,6 +19,7 @@ export function buildArena(map: MapData, cfg: Config): Arena {
     walls,
     spawns: [{ ...map.spawns[0] }, { ...map.spawns[1] }],
     dark: !!map.dark,
+    music: musicStyle(map),
     grid: buildGrid(w, h, walls, map.spawns[0], cfg),
   };
 }

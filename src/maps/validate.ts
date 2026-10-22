@@ -1,7 +1,7 @@
 import { CONFIG, type Config } from '../config';
 import { buildArena, circleHitsWall } from '../sim/arena';
 import { cellCenter, cellIndex } from '../sim/grid';
-import type { MapData } from '../sim/types';
+import { type MapData, MUSIC_STYLES } from '../sim/types';
 import type { Vec2 } from '../sim/vec';
 
 // Problems that would stop the map being playable; empty when it's fine.
@@ -81,5 +81,6 @@ export function parseMapJson(text: string): MapData {
       { x: data.spawns[1].x, y: data.spawns[1].y },
     ],
     ...(data.dark === true ? { dark: true } : {}),
+    ...(MUSIC_STYLES.includes(data.music) ? { music: data.music } : {}),
   };
 }

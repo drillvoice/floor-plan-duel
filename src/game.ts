@@ -391,7 +391,7 @@ function startMatch(map: MapData, from: MatchFrom = 'title', hotseat?: HotseatMa
   renderer.pausedHint = from === 'mobile' ? '' : 'Esc to resume · Q to quit to title';
   screen = { kind: 'match', state: createGame(matchMaps(map, from), seed, cfg), map, paused: false, from, recorded: false };
   keyboard.clear();
-  music.start();
+  music.start(screen.state.arena.music);
 }
 
 function leaveMatch(match: Extract<Screen, { kind: 'match' }>): void {
@@ -415,7 +415,7 @@ keyboard.onPress((code) => {
   }
   if (code === 'KeyN') {
     music.toggle();
-    if (music.enabled && screen.kind === 'match' && screen.state.phase !== 'matchOver') music.start();
+    if (music.enabled && screen.kind === 'match' && screen.state.phase !== 'matchOver') music.start(screen.state.arena.music);
     return;
   }
   if (screen.kind === 'editor' || screen.kind === 'hotseat' || screen.kind === 'phones' || screen.kind === 'mobile') return; // they handle their own keys
@@ -563,6 +563,8 @@ function frame(now: number): void {
       else {
         const over = s.roundTime - s.cfg.round.timeLimit;
         const suddenSteps = over < 0 ? 0 : 1 + Math.floor(over / s.cfg.round.suddenDeathInterval);
+        // Each map has its own tune: switch when the next round moves to a new one.
+        if (music.playing && music.current !== s.arena.music) music.start(s.arena.music);
         music.setTension(s.roundTime / s.cfg.round.timeLimit, suddenSteps);
       }
     } else {

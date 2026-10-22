@@ -59,6 +59,7 @@ export const BATHROOM_BRAWL: MapData = {
 // with cubicle partitions across the open-plan floor between them.
 export const THE_OFFICE: MapData = {
   name: 'The Office',
+  music: 'muzak',
   width: 26,
   height: 16,
   walls: [

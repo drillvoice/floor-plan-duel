@@ -1242,6 +1242,12 @@ export class Renderer {
       cx,
       footer,
     );
+    // A tap opens the phone menu (see game.ts), for phones that land here.
+    if (navigator.maxTouchPoints > 0) {
+      ctx.fillStyle = COLORS.players[0];
+      ctx.font = '700 15px system-ui, sans-serif';
+      ctx.fillText('On a phone? Tap anywhere to play on it.', cx, footer - 26);
+    }
     ctx.restore();
   }
 

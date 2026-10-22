@@ -13,7 +13,7 @@ import { Music } from './render/music';
 import { COLORS, modifierReel, Renderer } from './render/renderer';
 import { Editor } from './screens/editor';
 import { HotseatLobby } from './screens/hotseat';
-import { isTouchOnly, MatchOverlay, MobileMenu, type OverlayMode } from './screens/mobile';
+import { MatchOverlay, MobileMenu, prefersTouch, type OverlayMode } from './screens/mobile';
 import { PhoneLobby } from './screens/phones';
 import { createGame, step } from './sim/step';
 import type { GameState, MapData } from './sim/types';
@@ -203,7 +203,7 @@ function openPhoneLobby(): void {
 
 // Phone-only play: on a touch-only device the game opens on a touch menu
 // instead of the keyboard title screen, and you play a bot on the phone.
-const mobile = isTouchOnly();
+let mobile = prefersTouch();
 const MOBILE_BOT_KEY = 'fpd.mobile.bot';
 // Shared with the phone controller, so the phone remembers one name.
 const MOBILE_NAME_KEY = 'fpd.pad.name';
@@ -300,13 +300,22 @@ function overlayMode(): OverlayMode {
   return screen.paused ? 'paused' : 'playing';
 }
 
-if (mobile) {
+function enterMobileMode(): void {
+  mobile = true;
   // A game screen should never zoom on a double tap.
   document.querySelector('meta[name=viewport]')?.setAttribute('content', 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no');
   // Phones only allow sound after a touch.
   document.addEventListener('pointerup', () => sound.unlock(), { capture: true });
   openMobileMenu();
 }
+
+if (mobile) enterMobileMode();
+
+// A phone that slipped through to the keyboard title screen would be stuck
+// there, so a finger tap on it switches to the phone menu.
+canvas.addEventListener('pointerdown', (e) => {
+  if (screen.kind === 'title' && e.pointerType === 'touch') enterMobileMode();
+});
 
 // One-off actions from the phones.
 phones.onEvent = (e) => {

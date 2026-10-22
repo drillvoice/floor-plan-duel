@@ -103,7 +103,7 @@ Open the site on a phone and it shows a touch menu instead of the keyboard title
 - **❚❚** in the top-left corner pauses, with Resume and Quit. Holding the phone upright or switching apps pauses too. At the end of a match, **Rematch** or **Menu**.
 - It works offline once the site has been opened. To use the phone as a controller for a big screen instead, tap the link under Play.
 
-Only touch-only devices get this menu; computers, including ones with a touch screen, get the usual title screen. Add `?mobile` to the address to try it on a computer.
+Only devices whose main input is a finger get this menu; computers, including ones with a touch screen, get the usual title screen. Add `?mobile` to the address to try it on a computer, or `?desktop` to get the keyboard screen on a phone. If a phone ever shows the keyboard screen, tapping it switches to the phone menu.
 
 ## Map editor
 

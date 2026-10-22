@@ -137,8 +137,9 @@ All tunable numbers live in `src/config.ts`.
 ## Code layout
 
 - `src/main.ts`: the entry point. Loads the phone controller for `?join` links, otherwise the game.
-- `src/game.ts`: the game shell. Screens, settings, starting and leaving matches, and the fixed-timestep loop that drives the sim, renderer and sound.
+- `src/game.ts`: the game shell. Screens, starting and leaving matches, and the fixed-timestep loop that drives the sim, renderer and sound.
 - `src/config.ts`: every tunable number, the power-up and modifier ids, and the key bindings.
+- `src/settings.ts`: the choices made on the title screen and phone menu. `src/prefs.ts`: guarded access to the browser's storage, used for everything the game saves.
 - `src/sim/`: the game rules. A pure fixed 60 Hz `step(state, inputs)` with a seeded RNG and no DOM or clock, so a match is reproducible from its seed, maps and inputs. Power-ups and round modifiers live here too.
 - `src/input/`: keyboard and touch input (`touch.ts` is shared by phone controllers and phone play). `src/bot/`: the bot and A* pathfinding. All produce the same `{ move, dodge, shoot }` input.
 - `src/render/`: canvas drawing, effects, player looks, and synthesised sound and music. Never changes game state.

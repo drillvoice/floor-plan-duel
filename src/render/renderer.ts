@@ -5,7 +5,7 @@ import { fireCooldownFor, hitRadiusFor, maxDodgeCharges, ON_OPPONENT, STACKING }
 import { dodgeDirection, suddenDeathMultiplier } from '../sim/step';
 import { MODIFIER_IDS, POWER_UP_KINDS } from '../config';
 import { MODIFIERS } from '../sim/modifiers';
-import { POWER_UP_CATEGORY, type GameEvent, type GameState, type PlayerIndex, type PowerUp, type PowerUpKind } from '../sim/types';
+import { POWER_UP_CATEGORY, type Arena, type GameEvent, type GameState, type PlayerIndex, type PowerUp, type PowerUpKind } from '../sim/types';
 import { CATEGORY_COLORS, drawPowerUpGlyph, powerUpColor } from './icons';
 import { drawLook } from './looks';
 import { add, closestPointOnSegment, distPointSegment, scale, type Vec2 } from '../sim/vec';
@@ -31,7 +31,7 @@ const SIDE_MIN = 150;
 const SIDE_MAX = 260;
 const SIDE_GAP = 16;
 // Smallest window the title screen fits at full size.
-const TITLE_MIN_H = 520;
+const TITLE_MIN_H = 540;
 const TITLE_MIN_W = 820;
 
 interface Particle {
@@ -157,7 +157,7 @@ export class Renderer {
   private flashes: { pos: Vec2; age: number }[] = []; // muzzle flashes and impacts, for Lights Out
   private darkLayer: HTMLCanvasElement | null = null;
   private splats: Splat[] = [];
-  private splatsFor: GameState | null = null; // the match the splats belong to
+  private splatsFor: Arena | null = null; // the map (in this match) the splats belong to
   // Walls with their splats, redrawn only when a splat lands or the layout changes.
   private wallLayer: HTMLCanvasElement | null = null;
   private wallLayerKey = '';
@@ -287,9 +287,9 @@ export class Renderer {
   // A paint mark on the wall nearest `pos`: a blob plus a couple of drips
   // spread along the wall. `size` scales it (bounces leave a lighter mark).
   private splat(state: GameState, pos: Vec2, color: string, size: number): void {
-    if (this.splatsFor !== state) {
+    if (this.splatsFor !== state.arena) {
       this.splats = [];
-      this.splatsFor = state;
+      this.splatsFor = state.arena;
     }
     let wall = state.arena.walls[0];
     for (const w of state.arena.walls) if (distPointSegment(pos, w.a, w.b) < distPointSegment(pos, wall.a, wall.b)) wall = w;
@@ -397,9 +397,9 @@ export class Renderer {
     }
     ctx.stroke();
 
-    if (this.splatsFor !== state) {
+    if (this.splatsFor !== state.arena) {
       this.splats = [];
-      this.splatsFor = state;
+      this.splatsFor = state.arena;
       this.wallLayerKey = '';
     }
     ctx.drawImage(this.wallsWithSplats(state), 0, 0, this.width, this.height);
@@ -908,7 +908,7 @@ export class Renderer {
       return;
     } else if (state.phase === 'countdown') {
       title = `Round ${state.roundIndex + 1}`;
-      sub = 'Get ready';
+      sub = state.arenas.length > 1 ? `${state.arena.name}  ·  Get ready` : 'Get ready';
     } else if (state.phase === 'roundOver') {
       const w = state.lastRoundWinner;
       title = w === null ? 'Draw' : `${this.label(w)} takes the round`;
@@ -957,6 +957,11 @@ export class Renderer {
     ctx.fillStyle = COLORS.text;
     ctx.font = '800 28px system-ui, sans-serif';
     ctx.fillText(`Round ${state.roundIndex + 1}`, cx, cy - 110);
+    if (state.arenas.length > 1) {
+      ctx.fillStyle = COLORS.muted;
+      ctx.font = '600 16px system-ui, sans-serif';
+      ctx.fillText(state.arena.name, cx, cy - 80);
+    }
 
     // The reel window.
     const w = Math.min(560, this.width - 40);
@@ -1009,6 +1014,7 @@ export class Renderer {
     mapName: string,
     mapCount: number,
     modifiers: boolean,
+    rotation: boolean,
   ): void {
     const ctx = this.ctx;
     ctx.fillStyle = COLORS.background;
@@ -1022,8 +1028,8 @@ export class Renderer {
     ctx.scale(s, s);
     const cx = w / 2;
     const footer = h - 30;
-    const head = Math.max(50, Math.min(h * 0.2, footer - 440));
-    const top = Math.max(head + 170, Math.min(h * 0.42, footer - 270));
+    const head = Math.max(50, Math.min(h * 0.2, footer - 460));
+    const top = Math.max(head + 190, Math.min(h * 0.42, footer - 270));
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = COLORS.text;
@@ -1034,7 +1040,7 @@ export class Renderer {
     ctx.fillText('Press Enter to start  ·  B for full screen  ·  M to mute  ·  N for music', cx, head + 52);
     ctx.fillStyle = COLORS.text;
     ctx.font = '600 17px system-ui, sans-serif';
-    ctx.fillText(`Map: ${mapName}`, cx, head + 92);
+    ctx.fillText(rotation ? `Maps: ${mapName}, then a new one each round` : `Map: ${mapName}`, cx, head + 92);
     ctx.fillStyle = COLORS.muted;
     ctx.font = '400 13px system-ui, sans-serif';
     ctx.fillText(
@@ -1045,6 +1051,8 @@ export class Renderer {
     ctx.fillStyle = modifiers ? MODIFIER_COLOR : COLORS.muted;
     ctx.font = '600 13px system-ui, sans-serif';
     ctx.fillText(`Round modifiers: ${modifiers ? 'ON' : 'OFF'}  (R to change)`, cx, head + 138);
+    ctx.fillStyle = rotation ? COLORS.text : COLORS.muted;
+    ctx.fillText(`Map rotation: ${rotation ? 'ON' : 'OFF'}  (T to change)`, cx, head + 158);
 
     const colW = Math.min(360, w / 2 - 20);
     this.drawKeyPanel(KEY_BINDINGS.p1, 0, cx - colW / 2 - 10, top, isHeld, slots[0]);

@@ -114,6 +114,36 @@ function toggleModifiers(): void {
   }
 }
 
+// Map rotation, from T on the title screen: a match starts on the chosen map
+// and plays a different built-in map each round. On unless turned off.
+const ROTATION_KEY = 'fpd.mapRotation';
+let rotationOn = true;
+try {
+  rotationOn = localStorage.getItem(ROTATION_KEY) !== 'off';
+} catch {
+  // Storage unavailable: keep the default.
+}
+function toggleRotation(): void {
+  rotationOn = !rotationOn;
+  try {
+    localStorage.setItem(ROTATION_KEY, rotationOn ? 'on' : 'off');
+  } catch {
+    // Not saved; the choice still applies this session.
+  }
+}
+
+// The maps a match plays, one per round: the chosen map first, then the other
+// built-in maps in a random order. Test play from the editor sticks to its map.
+function matchMaps(first: MapData, from: MatchFrom): MapData[] {
+  if (!rotationOn || from === 'editor') return [first];
+  const rest = BUILT_IN_MAPS.filter((m) => m !== first);
+  for (let i = rest.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [rest[i], rest[j]] = [rest[j], rest[i]];
+  }
+  return [first, ...rest];
+}
+
 const looks = loadLooks();
 renderer.looks = looks;
 
@@ -232,7 +262,7 @@ function startMatch(map: MapData, from: MatchFrom = 'title', hotseat?: HotseatMa
     renderer.names = sideNames();
     renderer.matchOverHint = 'Enter for a rematch · Esc for title';
   }
-  screen = { kind: 'match', state: createGame(map, seed, cfg), map, paused: false, from, recorded: false };
+  screen = { kind: 'match', state: createGame(matchMaps(map, from), seed, cfg), map, paused: false, from, recorded: false };
   keyboard.clear();
   music.start();
 }
@@ -272,6 +302,7 @@ keyboard.onPress((code) => {
     } else if (code === 'KeyH') openLobby();
     else if (code === 'KeyP') openPhoneLobby();
     else if (code === 'KeyR') toggleModifiers();
+    else if (code === 'KeyT') toggleRotation();
     else if (code === 'Tab') mapIndex = (mapIndex + 1) % availableMaps().length;
     else if (code === 'KeyE') {
       const map = selectedMap();
@@ -336,7 +367,7 @@ function frame(now: number): void {
       const phone = phones.room.phoneIn(i);
       return phone ? `📱 ${phone.name || 'Phone'}` : slots[i];
     });
-    renderer.drawTitle((code) => keyboard.isHeld(code), labels, selectedMap().name, availableMaps().length, modifiersOn);
+    renderer.drawTitle((code) => keyboard.isHeld(code), labels, selectedMap().name, availableMaps().length, modifiersOn, rotationOn);
   } else if (screen.kind === 'editor') {
     accumulator = 0;
     editor.draw();

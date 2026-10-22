@@ -24,13 +24,15 @@ import { add, closestPointOnSegment, dist, distPointSegment, dot, len, normalize
 
 const EPS = 1e-9;
 
-export function createGame(map: MapData, seed: number, cfg: Config = CONFIG): GameState {
-  const arena = buildArena(map, cfg);
+// Given several maps, the match plays them in turn, one per round.
+export function createGame(maps: MapData | readonly MapData[], seed: number, cfg: Config = CONFIG): GameState {
+  const arenas = (Array.isArray(maps) ? maps : [maps]).map((m: MapData) => buildArena(m, cfg));
   const state: GameState = {
     cfg,
     baseCfg: cfg,
     modifier: null,
-    arena,
+    arena: arenas[0],
+    arenas,
     tick: 0,
     phase: 'countdown',
     phaseTime: 0,
@@ -75,6 +77,7 @@ export function spawnFor(state: GameState, player: PlayerIndex): Vec2 {
 }
 
 function startRound(state: GameState): void {
+  state.arena = state.arenas[state.roundIndex % state.arenas.length];
   state.modifier = pickModifier(state);
   state.cfg = configFor(state.baseCfg, state.modifier);
   state.phase = 'countdown';

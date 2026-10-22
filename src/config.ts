@@ -14,6 +14,7 @@ export const POWER_UP_KINDS = [
   'bouncer',
   'ghost',
   'leadShot',
+  'laser',
   // Curses on the opponent.
   'molasses',
   'topsyTurvy',
@@ -119,6 +120,14 @@ export const CONFIG = {
     ghost: { duration: 4 },
     // Auto-aim fully predicts the opponent's movement.
     leadShot: { aimLead: 1, duration: 6 },
+    // Shots become laser zaps. A shot first locks a thin line onto where the
+    // opponent is now; `chargeTime` later the zap fires instantly along that
+    // line, so the defender dodges the line rather than a bullet. The beam
+    // stops at the first wall or after `range`. `cooldown` replaces the fire
+    // cooldown (other fire-rate power-ups don't change it), `width` is how
+    // thick the beam is for hits, and `flashTime` is how long it stays on
+    // screen after firing.
+    laser: { duration: 5, chargeTime: 0.4, range: 10, cooldown: 1, width: 0.2, flashTime: 0.15 },
     molasses: { speedMultiplier: 0.6, duration: 4 },
     // Opponent's movement (and so their dodges) reversed.
     topsyTurvy: { duration: 3 },

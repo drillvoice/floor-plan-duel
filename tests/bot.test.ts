@@ -59,6 +59,16 @@ describe('bot', () => {
     expect(input.dodge).toBe(false);
   });
 
+  it('steps off a laser that has locked onto it', () => {
+    const s = playing();
+    placePlayer(s, 0, { x: 4, y: 2 });
+    placePlayer(s, 1, { x: 4, y: 7 });
+    s.lasers.push({ id: 78, owner: 0, from: { x: 4, y: 2 }, to: { x: 4, y: 12 }, age: 0.2, chargeTime: 0.4, fired: false });
+    const input = new BotPlayer('hard', 3).sample(s, 1);
+    expect(input.dodge).toBe(true);
+    expect(Math.abs(input.move.x)).toBeGreaterThan(0.9);
+  });
+
   it('finds the opponent from the spawns', () => {
     const s = playing();
     const bot = new BotPlayer('normal', 1);

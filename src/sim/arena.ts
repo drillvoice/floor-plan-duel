@@ -1,7 +1,7 @@
 import type { Config } from '../config';
 import { buildGrid } from './grid';
 import { type Arena, type MapData, musicStyle, type Wall } from './types';
-import { distPointSegment, distSegmentSegment, type Vec2 } from './vec';
+import { add, distPointSegment, distSegmentSegment, scale, type Vec2 } from './vec';
 
 export function buildArena(map: MapData, cfg: Config): Arena {
   const { width: w, height: h } = map;
@@ -96,4 +96,21 @@ export function circleHitsWall(pos: Vec2, radius: number, arena: Arena, cfg: Con
 export function hasLineOfSight(a: Vec2, b: Vec2, arena: Arena, cfg: Config): boolean {
   const clearance = cfg.bullet.radius + cfg.map.wallThickness / 2;
   return !arena.walls.some((w) => distSegmentSegment(a, b, w.a, w.b) < clearance);
+}
+
+// How far a beam of half-width `radius` can travel from `from` along the unit
+// vector `dir` before it touches a wall, up to `maxLength`.
+export function castRay(from: Vec2, dir: Vec2, maxLength: number, radius: number, arena: Arena, cfg: Config): number {
+  const clearance = radius + cfg.map.wallThickness / 2;
+  const blocked = (l: number) => arena.walls.some((w) => distSegmentSegment(from, add(from, scale(dir, l)), w.a, w.b) < clearance);
+  if (!blocked(maxLength)) return maxLength;
+  // The first wall along the way: narrow it down by halving.
+  let clear = 0;
+  let hit = maxLength;
+  for (let n = 0; n < 20; n++) {
+    const mid = (clear + hit) / 2;
+    if (blocked(mid)) hit = mid;
+    else clear = mid;
+  }
+  return clear;
 }

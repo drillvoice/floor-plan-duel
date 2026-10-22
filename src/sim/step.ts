@@ -6,7 +6,7 @@
 
 import { CONFIG, type Config } from '../config';
 import { configFor, MODIFIERS, pickModifier } from './modifiers';
-import { buildArena, ghostArena, hasLineOfSight, moveCircle, resolveCircle } from './arena';
+import { buildArena, castRay, ghostArena, hasLineOfSight, moveCircle, resolveCircle } from './arena';
 import {
   aimLeadFor,
   bulletLifetimeFor,
@@ -19,7 +19,7 @@ import {
   scheduleNextPowerUp,
   updatePowerUps,
 } from './powerups';
-import type { Bullet, GameState, MapData, PlayerIndex, PlayerInput, PlayerState } from './types';
+import type { Bullet, GameState, Laser, MapData, PlayerIndex, PlayerInput, PlayerState } from './types';
 import { add, closestPointOnSegment, dist, distPointSegment, dot, len, normalize, scale, sub, type Vec2 } from './vec';
 
 const EPS = 1e-9;
@@ -40,6 +40,7 @@ export function createGame(maps: MapData | readonly MapData[], seed: number, cfg
     roundTime: 0,
     players: [newPlayer(), newPlayer()],
     bullets: [],
+    lasers: [],
     powerUps: [],
     nextPowerUpIn: 0,
     nextId: 1,
@@ -84,6 +85,7 @@ function startRound(state: GameState): void {
   state.phaseTime = 0;
   state.roundTime = 0;
   state.bullets = [];
+  state.lasers = [];
   state.powerUps = [];
   scheduleNextPowerUp(state);
   for (const i of [0, 1] as const) {
@@ -135,6 +137,7 @@ export function step(state: GameState, inputs: [PlayerInput, PlayerInput]): Game
       for (const i of [0, 1] as const) updatePlayer(state, i, inputs[i], dt);
       updateFacing(state);
       for (const i of [0, 1] as const) tryFire(state, i, inputs[i]);
+      updateLasers(state, dt);
       updateBullets(state, dt);
       updatePowerUps(state, dt);
       checkRoundEnd(state);
@@ -252,6 +255,10 @@ function tryFire(state: GameState, i: PlayerIndex, input: PlayerInput): void {
   const p = state.players[i];
   if (!input.shoot || p.fireCooldown > EPS) return;
   const opp = state.players[i === 0 ? 1 : 0];
+  if (p.effects.laser > EPS) {
+    chargeLaser(state, i);
+    return;
+  }
   const speed = cfg.bullet.speed * bulletSpeedFactor(p.effects, state) * suddenDeathMultiplier(state);
   let dir = normalize(sub(aimPoint(p.pos, opp, speed, aimLeadFor(p.effects, cfg)), p.pos));
   if (dir.x === 0 && dir.y === 0) dir = p.facing;
@@ -271,6 +278,54 @@ function tryFire(state: GameState, i: PlayerIndex, input: PlayerInput): void {
   state.bullets.push(bullet);
   p.fireCooldown = fireCooldownFor(p.effects, state);
   state.events.push({ type: 'fire', player: i, pos: { ...start } });
+}
+
+// A laser locks onto where the opponent is right now (no leading), so moving
+// off the line before it fires is always a way out.
+function chargeLaser(state: GameState, i: PlayerIndex): void {
+  const cfg = state.cfg;
+  const lc = cfg.powerUps.laser;
+  const p = state.players[i];
+  const opp = state.players[i === 0 ? 1 : 0];
+  let dir = normalize(sub(opp.pos, p.pos));
+  if (dir.x === 0 && dir.y === 0) dir = p.facing;
+  const from = { ...p.pos };
+  const to = add(from, scale(dir, castRay(from, dir, lc.range, lc.width / 2, state.arena, cfg)));
+  state.lasers.push({ id: state.nextId++, owner: i, from, to, age: 0, chargeTime: lc.chargeTime, fired: false });
+  p.fireCooldown = fireCooldownFor(p.effects, state);
+  state.events.push({ type: 'laserCharge', player: i, from: { ...from }, to: { ...to } });
+}
+
+// Lasers fire once their charge is up, hitting the opponent if they're still
+// on the line, and stay on screen for a moment afterwards.
+function updateLasers(state: GameState, dt: number): void {
+  const cfg = state.cfg;
+  const lc = cfg.powerUps.laser;
+  const kept: Laser[] = [];
+  for (const l of state.lasers) {
+    l.age += dt;
+    if (!l.fired && l.age >= l.chargeTime - EPS) {
+      l.fired = true;
+      const targetIndex: PlayerIndex = l.owner === 0 ? 1 : 0;
+      const target = state.players[targetIndex];
+      const at = closestPointOnSegment(target.pos, l.from, l.to);
+      const gap = dist(at, target.pos) - hitRadiusFor(target, cfg) - lc.width / 2;
+      const hit = gap < 0;
+      state.events.push({ type: 'laserFire', player: l.owner, from: { ...l.from }, to: { ...l.to }, hit });
+      if (hit && target.effects.shield > EPS) {
+        target.effects.shield = 0;
+        state.events.push({ type: 'shieldBlock', player: targetIndex, pos: at });
+      } else if (hit) {
+        target.hits++;
+        state.events.push({ type: 'hit', player: targetIndex, pos: at, hits: target.hits });
+      } else if (gap < cfg.nearMiss.margin) {
+        target.nearMisses++;
+        state.events.push({ type: 'nearMiss', player: targetIndex, pos: at });
+      }
+    }
+    if (l.age < l.chargeTime + lc.flashTime - EPS) kept.push(l);
+  }
+  state.lasers = kept;
 }
 
 function updateBullets(state: GameState, dt: number): void {

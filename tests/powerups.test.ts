@@ -304,6 +304,69 @@ describe('v2 power-ups', () => {
     expect(s.players[1].hits).toBe(1);
   });
 
+  describe('Laser', () => {
+    const lc = CONFIG.powerUps.laser;
+    const chargeTicks = Math.round(lc.chargeTime / DT);
+    const armed = (map: MapData = BOX) => {
+      const s = map === BOX ? quiet() : playing(cfgWith(['shield'], { spawnIntervalMin: 100, spawnIntervalMax: 100 }), map);
+      placePlayer(s, 0, { x: 6, y: 8 });
+      placePlayer(s, 1, { x: 12, y: 8 });
+      applyPowerUp(s, 0, 'laser');
+      return s;
+    };
+
+    it('locks on, then hits instantly if the target stays on the line', () => {
+      const s = armed();
+      step(s, [shoot, NO_INPUT]);
+      expect(s.bullets).toHaveLength(0);
+      expect(s.lasers).toHaveLength(1);
+      expect(s.players[0].fireCooldown).toBeCloseTo(lc.cooldown);
+      run(s, chargeTicks - 2);
+      expect(s.players[1].hits).toBe(0);
+      run(s, 2);
+      expect(s.players[1].hits).toBe(1);
+    });
+
+    it('misses a target that steps off the line before it fires', () => {
+      const s = armed();
+      step(s, [shoot, NO_INPUT]);
+      run(s, chargeTicks, NO_INPUT, walk(0, 1));
+      expect(s.players[1].hits).toBe(0);
+    });
+
+    it('stops at the first wall and at its range', () => {
+      const walled = armed({ ...BOX, walls: [{ a: { x: 9, y: 6 }, b: { x: 9, y: 10 } }] });
+      step(walled, [shoot, NO_INPUT]);
+      expect(walled.lasers[0].to.x).toBeLessThan(9);
+      run(walled, chargeTicks);
+      expect(walled.players[1].hits).toBe(0);
+
+      const far = armed();
+      placePlayer(far, 1, { x: 6 + lc.range + 2, y: 8 });
+      step(far, [shoot, NO_INPUT]);
+      expect(far.lasers[0].to.x).toBeCloseTo(6 + lc.range);
+      run(far, chargeTicks);
+      expect(far.players[1].hits).toBe(0);
+    });
+
+    it('is blocked by a Shield', () => {
+      const s = armed();
+      applyPowerUp(s, 1, 'shield');
+      step(s, [shoot, NO_INPUT]);
+      run(s, chargeTicks);
+      expect(s.players[1].hits).toBe(0);
+      expect(s.players[1].effects.shield).toBe(0);
+    });
+
+    it('goes back to bullets when it wears off', () => {
+      const s = armed();
+      run(s, Math.round(lc.duration / DT) + 1);
+      step(s, [shoot, NO_INPUT]);
+      expect(s.lasers).toHaveLength(0);
+      expect(s.bullets).toHaveLength(1);
+    });
+  });
+
   it('every kind in the pool can spawn', () => {
     const s = playing(cfgWith(CONFIG.powerUps.pool, { spawnIntervalMin: 0.05, spawnIntervalMax: 0.05, maxOnMap: 400, minPowerUpDistance: 0 }));
     s.players[0].pos = { x: -50, y: -50 };

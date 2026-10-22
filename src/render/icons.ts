@@ -120,6 +120,17 @@ export function drawPowerUpGlyph(ctx: CanvasRenderingContext2D, kind: PowerUpKin
       ctx.lineTo(x + 0.75 * s, y);
       ctx.stroke();
       break;
+    case 'laser':
+      // A beam ending in a spark.
+      ctx.moveTo(x - 0.75 * s, y + 0.35 * s);
+      ctx.lineTo(x + 0.3 * s, y - 0.15 * s);
+      for (const a of [0, 1, 2, 3]) {
+        const ang = (a * Math.PI) / 2 + Math.PI / 4;
+        ctx.moveTo(x + 0.45 * s + Math.cos(ang) * 0.12 * s, y - 0.22 * s + Math.sin(ang) * 0.12 * s);
+        ctx.lineTo(x + 0.45 * s + Math.cos(ang) * 0.38 * s, y - 0.22 * s + Math.sin(ang) * 0.38 * s);
+      }
+      ctx.stroke();
+      break;
     case 'topsyTurvy':
       // Two arrows swapping.
       ctx.moveTo(x - 0.6 * s, y - 0.25 * s);

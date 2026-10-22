@@ -83,11 +83,16 @@ Power-ups appear at random spots, linger for a random time, and are either round
 | Bouncer | Temporary | Bullets bounce off walls once | 8 s | v2 |
 | Ghost | Temporary | Walk through walls (not out of the map) | 4 s | v2 |
 | Lead Shot | Temporary | Auto-aim predicts the opponent's movement | 6 s | v2 |
+| Laser | Temporary | Shots become instant laser zaps after a short lock-on (see below) | 5 s | Later |
 | Molasses | Curse | Opponent move speed −40% | 4 s | Yes |
 | Topsy-Turvy | Curse | Opponent's movement controls reversed | 3 s | v2 |
 | Big Target | Curse | Opponent grows 50% bigger (easier to hit) | 5 s | v2 |
 
-All thirteen have shipped; the last column records what the first build included.
+All fourteen have shipped; the last column records what the first build included.
+
+**Laser.** An instant zap can't be dodged, so on its own it would just be free hits. Instead each shot first locks a dotted line onto where the opponent is right now (no leading), and 0.4 s later the zap fires instantly along that line. The defender dodges the line rather than a bullet. The beam stops at the first wall and reaches 10 units (bullets reach 8 by default, but keep flying), and the reload is 1 s instead of 0.6 s. Shield blocks a zap; Lead Shot, Bouncer and the fire-rate power-ups don't change it.
+
+The numbers come from the sim (Oct 2026). The Easy bot reacts in 0.35 s, about as fast as a person, so it stands in for a human defender. With a 0.25–0.3 s lock-on, half of all zaps hit Easy bots, which is too strong; at 0.4 s about a quarter do, against 12% for bullets. The aim for a temporary buff is a clear edge without deciding the round: its picker should win about 55–60% of rounds against human-like play. Measured against a dud, not 50%: a power-up with no effect scores about 48% on the sim's "picked by round winner" line, because both players often pick something up in the same round. With a 1.2 s reload the laser scored 54% against Easy bots and no better than the dud against Normal ones, so the reload is now 1 s: 57% against Easy and 50.5% against Normal (Normal bots react in 0.2 s and dodge nearly every zap). An 0.8 s reload reaches 60%, but then it fires almost as often as bullets and becomes a plain upgrade. To measure a power-up, list it several times in the pool so it spawns more often, and compare it with a dud, e.g. `--set powerUps.laser.duration=0`.
 
 If round-long stacking proves to snowball, try spawning power-ups slightly closer to whoever is losing.
 
@@ -143,7 +148,7 @@ The bot exists for two jobs: a sparring partner when you're alone, and an automa
 
 - Bot vs bot can run with no rendering, faster than real time, from a command (e.g. `npm run sim -- --matches 500`).
 - Outputs a summary: win rate by slot, average round length, hits per round, how often each power-up was picked up and by the eventual round winner.
-- Target signals: rounds averaging 40–70 s, neither spawn winning more than 55%, no power-up whose pickup wins the round more than 70% of the time.
+- Target signals: rounds averaging 20–70 s, neither spawn winning more than 55%, no power-up whose pickup wins the round more than 70% of the time.
 
 ## Tech stack and architecture
 
@@ -185,15 +190,17 @@ The MVP proves one thing: dodging slow auto-aimed bullets on a shared laptop is 
 - **Hotseat mode (done):** still 1v1, but for a group taking turns. Players enter their names, the loser of each match swaps out for the next person in the queue, and a scoreboard tracks who's playing and everyone's wins.
 - **Photo looks:** use a picture of your face inside your player circle, alongside the icon looks.
 
+- **Laser (done):** a fourteenth power-up. Shots become instant zaps after a short, visible lock-on; see Power-ups.
+- **Round length (settled):** bot rounds average about 28 s, under the original 40–70 s target, but they feel right in play, so the target is now 20–70 s.
 - **Phone play (done):** on a touch-only device the game runs entirely on the phone against a bot. Landscape, with the whole arena scaled to fill the screen under a one-row HUD, and the controller's joystick, Dodge and Shoot laid see-through over the bottom corners (the same `TouchControls` code as phone controllers). Desktops are unaffected.
 
 **v3** — two-phone play over a small relay server; maybe a first-person mode rendered from the same walls.
 
 **Open questions**
 
-- **Rounds are shorter than the target.** 300 Normal-vs-Normal matches on The Flat (Oct 2026) average 27.5 s a round against the 40–70 s target, and only 0.1% reach sudden death. Spawn balance (49/51%) and power-ups are within target. Either lengthen rounds (e.g. more hits to lose, slower fire) or lower the target.
 - Does auto-aim at the current position make bullets too easy to dodge at range? (Auto-aim now leads moving targets by 70% by default, `bullet.aimLead`; Lead Shot makes it 100%.)
 - Should there be any reason to shoot without line of sight, such as Bouncer?
+- Are some temporary buffs too weak, or do the bots just not use them? Against Easy bots, measured against a dud's 48% (see Laser), Rapid Fire's picker wins 51% of rounds, Lead Shot's 46% and Ghost's 40%.
 - Do round-long upgrades snowball? Not so far: in the same sim no power-up's picker wins the round more than 62% of the time (target: under 70%).
 - Laptop key ghosting with this layout (see Controls).
 

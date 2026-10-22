@@ -28,6 +28,7 @@ export function bulletLifetimeFor(effects: Effects, state: GameState): number {
 
 export function fireCooldownFor(effects: Effects, state: GameState): number {
   const pc = state.cfg.powerUps;
+  if (effects.laser > EPS) return pc.laser.cooldown;
   const rapid = effects.rapidFire > EPS ? pc.rapidFire.cooldownMultiplier : 1;
   return state.cfg.fire.cooldown * Math.pow(1 - pc.triggerHappy.cooldownReduction, effects.triggerHappy) * rapid;
 }

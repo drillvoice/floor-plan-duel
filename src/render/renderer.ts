@@ -5,8 +5,8 @@
 import { POWER_UP_KINDS } from '../config';
 import { fireCooldownFor, hitRadiusFor, maxDodgeCharges, ON_OPPONENT, STACKING } from '../sim/powerups';
 import { dodgeDirection } from '../sim/step';
-import type { Arena, GameEvent, GameState, PlayerIndex, PowerUp, PowerUpKind } from '../sim/types';
-import { add, closestPointOnSegment, distPointSegment, scale, type Vec2 } from '../sim/vec';
+import type { Arena, GameEvent, GameState, Laser, PlayerIndex, PowerUp, PowerUpKind } from '../sim/types';
+import { add, closestPointOnSegment, dist, distPointSegment, scale, type Vec2 } from '../sim/vec';
 import { drawHud } from './hud';
 import { CATEGORY_COLORS, drawPowerUpGlyph, powerUpColor } from './icons';
 import { arenaLayout, toScreen, type MatchView } from './layout';
@@ -56,6 +56,7 @@ const PICKUP_TEXT: Record<PowerUpKind, { self: string; victim?: string }> = {
   bouncer: { self: 'Bouncy bullets!' },
   ghost: { self: 'Ghost mode!' },
   leadShot: { self: 'Sharpshooter!' },
+  laser: { self: 'Laser!' },
   molasses: { self: 'Slowed them down!', victim: 'Slowed!' },
   topsyTurvy: { self: 'Flipped their controls!', victim: 'Controls flipped!' },
   bigTarget: { self: 'Made them huge!', victim: 'Big target!' },
@@ -162,6 +163,16 @@ export class Renderer {
           break;
         case 'fire':
           this.flashes.push({ pos: e.pos, age: 0 });
+          break;
+        case 'laserFire':
+          this.shake = Math.max(this.shake, 0.25);
+          this.flashes.push({ pos: e.from, age: 0 });
+          // A beam that stopped short of its range ended on a wall.
+          if (!e.hit && dist(e.from, e.to) < state.cfg.powerUps.laser.range - 0.01) {
+            this.burst(e.to, COLORS.players[e.player], 8, 3);
+            this.flashes.push({ pos: e.to, age: 0 });
+            this.splat(state, e.to, COLORS.players[e.player], 0.8);
+          }
           break;
         case 'wallHit':
           this.burst(e.pos, COLORS.wall, 4, 2);
@@ -293,6 +304,8 @@ export class Renderer {
     for (const b of state.bullets) this.drawBullet(state, b.owner, b.pos, b.radius, b.age, b.lifetime, b.bounces > 0);
     for (const i of [0, 1] as const) this.drawPlayer(state, i);
     if (state.arena.dark) this.drawDarkness(state);
+    // Lasers glow, so they show through Lights Out's darkness.
+    for (const l of state.lasers) this.drawLaser(state, l);
     this.drawEffects();
     this.drawCallouts(state);
     ctx.restore();
@@ -505,6 +518,42 @@ export class Renderer {
     ctx.stroke();
   }
 
+  // While charging, a thin flickering line that firms up as the zap nears;
+  // once fired, a bright beam that fades out.
+  private drawLaser(state: GameState, l: Laser): void {
+    const ctx = this.ctx;
+    const a = this.toScreen(l.from);
+    const b = this.toScreen(l.to);
+    const color = COLORS.players[l.owner];
+    ctx.save();
+    ctx.lineCap = 'round';
+    if (!l.fired) {
+      const t = Math.min(1, l.age / l.chargeTime);
+      const flicker = 0.75 + 0.25 * Math.sin(state.tick * 1.3);
+      ctx.setLineDash([6, 5]);
+      ctx.lineDashOffset = -state.tick * 2;
+      ctx.strokeStyle = hexAlpha(color, (0.3 + 0.6 * t) * flicker);
+      ctx.lineWidth = 1.5 + 1.5 * t;
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+    } else {
+      const life = Math.max(0, 1 - (l.age - l.chargeTime) / state.cfg.powerUps.laser.flashTime);
+      const w = state.cfg.powerUps.laser.width * this.view.scale;
+      ctx.strokeStyle = hexAlpha(color, 0.6 * life);
+      ctx.lineWidth = w * 3;
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+      ctx.strokeStyle = `rgba(255,255,255,${life})`;
+      ctx.lineWidth = w;
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
   private drawPlayer(state: GameState, i: PlayerIndex): void {
     const ctx = this.ctx;
     const p = state.players[i];
@@ -632,7 +681,8 @@ export class Renderer {
 
     // Fire cooldown ring.
     if (p.fireCooldown > 0) {
-      const frac = 1 - p.fireCooldown / fireCooldownFor(p.effects, state);
+      // Clamped: a long laser cooldown can outlast the laser itself.
+      const frac = Math.max(0, 1 - p.fireCooldown / fireCooldownFor(p.effects, state));
       ctx.strokeStyle = 'rgba(255,255,255,0.45)';
       ctx.lineWidth = 2;
       ctx.beginPath();

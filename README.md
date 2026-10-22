@@ -1,6 +1,6 @@
 # Floor Plan Duel
 
-A top-down 1v1 shooter for two people sharing one laptop keyboard. Shots auto-aim at the opponent but travel slowly, so the game is about moving and dodging. Power-ups appear at random to swing rounds. See [DESIGN.md](DESIGN.md) for the full design.
+A top-down 1v1 shooter for two people sharing one laptop keyboard, or using their phones as controllers, or one person against a bot on a phone. Shots auto-aim at the opponent but travel slowly, so the game is about moving and dodging. Power-ups appear at random to swing rounds. See [DESIGN.md](DESIGN.md) for the full design.
 
 ## Run
 
@@ -9,8 +9,9 @@ Needs Node.js 22 or newer.
 ```sh
 npm install
 npm run dev      # play at http://localhost:5173
-npm test         # simulation, power-up, bot and map tests
-npm run build    # static site in dist/ (works from any folder, e.g. GitHub Pages)
+npm test         # unit tests: sim, power-ups, modifiers, bot, maps, hotseat, phones, touch, music
+npm run typecheck
+npm run build    # typecheck, then a static site in dist/ (works from any folder, e.g. GitHub Pages)
 npm run preview  # serve the build locally
 ```
 
@@ -135,10 +136,19 @@ All tunable numbers live in `src/config.ts`.
 
 ## Code layout
 
-- `src/sim/`: the game rules. A pure fixed 60 Hz `step(state, inputs)` with a seeded RNG and no DOM or clock, so a match is reproducible from its seed and inputs.
-- `src/input/`: keyboard and touch input (`touch.ts` is shared by phone controllers and phone play). `src/bot/`: the bot and A* pathfinding. Both produce the same `{ move, dodge, shoot }` input.
-- `src/render/`: canvas drawing, effects and synthesised sound. Never changes game state.
-- `src/screens/editor.ts`, `src/maps/`: the editor, the built-in maps, validation and storage.
-- `scripts/sim.ts`: the headless simulator.
+- `src/main.ts`: the entry point. Loads the phone controller for `?join` links, otherwise the game.
+- `src/game.ts`: the game shell. Screens, settings, starting and leaving matches, and the fixed-timestep loop that drives the sim, renderer and sound.
+- `src/config.ts`: every tunable number, the power-up and modifier ids, and the key bindings.
+- `src/sim/`: the game rules. A pure fixed 60 Hz `step(state, inputs)` with a seeded RNG and no DOM or clock, so a match is reproducible from its seed, maps and inputs. Power-ups and round modifiers live here too.
+- `src/input/`: keyboard and touch input (`touch.ts` is shared by phone controllers and phone play). `src/bot/`: the bot and A* pathfinding. All produce the same `{ move, dodge, shoot }` input.
+- `src/render/`: canvas drawing, effects, player looks, and synthesised sound and music. Never changes game state.
+- `src/maps/`: the built-in maps, validation and saved-map storage.
+- `src/screens/`: the DOM screens: map editor, hotseat lobby, phone lobby, and the phone menu and in-match touch overlay.
+- `src/hotseat/`: the hotseat queue and scoreboard, with no DOM.
+- `src/net/`: phone controllers. `protocol.ts` is the message format and room logic with no networking (unit tested); `host.ts` wires it to PeerJS. `src/phone/controller.ts` is the phone side.
+- `scripts/sim.ts`: the headless simulator. `tests/`: Vitest unit tests.
+- `public/`: the PWA manifest, icon and service worker.
 
 For tuning in the browser, `fpd.state` in the developer console is the live match state.
+
+Settings and saved data live in the browser's `localStorage` under `fpd.*` keys (slots, looks, music, modifiers, map rotation, saved maps, the hotseat session, the phone-play bot level, and the phone's name and look).

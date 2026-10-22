@@ -134,7 +134,8 @@ export interface GameState {
   cfg: Config; // rules for the current round: baseCfg plus its modifier
   baseCfg: Config; // rules for the match
   modifier: ModifierId | null; // this round's modifier
-  arena: Arena;
+  arena: Arena; // this round's
+  arenas: Arena[]; // the match's maps, played in turn one per round
   tick: number;
   phase: Phase;
   phaseTime: number; // seconds spent in the current phase

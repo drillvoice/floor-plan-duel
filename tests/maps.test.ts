@@ -92,6 +92,21 @@ describe('built-in maps', () => {
     expect(telegraphs).toBeGreaterThan(2);
   });
 
+  it('a match given several maps plays a different one each round, in turn', () => {
+    const maps = [THE_FLAT, LIGHTS_OUT];
+    const s = createGame(maps, 3, { ...CONFIG, round: { ...CONFIG.round, roundsToWin: 5 } });
+    const played: string[] = [];
+    for (let r = 0; r < 3; r++) {
+      while (s.phase !== 'playing') step(s, [NO_INPUT, NO_INPUT]);
+      played.push(s.arena.name);
+      // Each player starts on the new map's spawn points.
+      expect(s.players[r % 2].pos).toEqual(maps[r % 2].spawns[0]);
+      s.players[1].hits = CONFIG.round.hitsToLose;
+      step(s, [NO_INPUT, NO_INPUT]);
+    }
+    expect(played).toEqual(['The Flat', 'Lights Out', 'The Flat']);
+  });
+
   it('have distinct names', () => {
     expect(new Set(BUILT_IN_MAPS.map((m) => m.name)).size).toBe(BUILT_IN_MAPS.length);
   });

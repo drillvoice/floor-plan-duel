@@ -91,7 +91,8 @@ export interface PlayerState {
   pos: Vec2;
   vel: Vec2; // walking velocity achieved last tick (excludes dashes)
   facing: Vec2; // unit vector toward the target
-  target: PlayerIndex | null; // the nearest opponent still in the round: who auto-aim shoots at
+  target: PlayerIndex | null; // the opponent auto-aim shoots at (see chooseTarget)
+  blockedFor: number; // seconds the target has been behind a wall
   lastMove: Vec2; // unit vector of the last movement input; where a dodge goes when standing still
   hits: number; // hits taken this round
   out: boolean; // knocked out of this round: no moving, shooting or being hit

@@ -70,6 +70,7 @@ function newPlayer(): PlayerState {
     vel: { x: 0, y: 0 },
     facing: { x: 1, y: 0 },
     target: null,
+    blockedFor: 0,
     lastMove: { x: 0, y: 0 },
     hits: 0,
     out: false,
@@ -107,6 +108,8 @@ function startRound(state: GameState): void {
     p.vel = { x: 0, y: 0 };
     p.hits = 0;
     p.out = false;
+    p.target = null; // picked afresh from the new spawns
+    p.blockedFor = 0;
     p.fireCooldown = 0;
     p.dodgeCharges = 1;
     p.dodgeCooldown = 0;
@@ -152,7 +155,7 @@ export function step(state: GameState, inputs: readonly PlayerInput[]): GameStat
       state.players.forEach((p, i) => {
         if (!p.out) updatePlayer(state, i, inputs[i] ?? NO_INPUT, dt);
       });
-      updateFacing(state);
+      updateFacing(state, dt);
       state.players.forEach((p, i) => {
         if (!p.out) tryFire(state, i, inputs[i] ?? NO_INPUT);
       });
@@ -231,32 +234,48 @@ export function dodgeDirection(p: PlayerState): Vec2 {
   return len(p.lastMove) > EPS ? p.lastMove : p.facing;
 }
 
-// Auto-aim targets the nearest opponent still in the round (ties go to the
-// lower-numbered player, so it never depends on anything but the state).
-export function nearestOpponent(state: GameState, i: PlayerIndex): PlayerIndex | null {
+// Who auto-aim targets: an opponent still in the round, preferring ones with
+// a clear shot (a wall in the way would only stop the bullet), then the
+// nearest. Opponents about equally near go to whoever is doing better: fewer
+// hits taken this round, then more rounds won, then the lower-numbered one.
+// The current target is kept until another is clearly closer, and for a
+// moment after it ducks behind a wall, so aim doesn't flick back and forth.
+export function chooseTarget(state: GameState, i: PlayerIndex): PlayerIndex | null {
+  const tc = state.cfg.targeting;
   const me = state.players[i];
-  let best: PlayerIndex | null = null;
-  let bestD = Infinity;
-  state.players.forEach((p, j) => {
-    if (j === i || p.out) return;
-    const d = dist(me.pos, p.pos);
-    if (d < bestD - EPS) {
-      bestD = d;
-      best = j;
-    }
+  const all = state.players.flatMap((p, j) => {
+    if (j === i || p.out) return [];
+    return [{ j, d: dist(me.pos, p.pos), clear: hasLineOfSight(me.pos, p.pos, state.arena, state.cfg) }];
   });
-  return best;
+  if (all.length === 0) return null;
+  const pool = tc.preferClearShot && all.some((c) => c.clear) ? all.filter((c) => c.clear) : all;
+  const nearest = Math.min(...pool.map((c) => c.d));
+  const tied = pool.filter((c) => c.d <= nearest + tc.tieDistance);
+  tied.sort((a, b) => {
+    const pa = state.players[a.j];
+    const pb = state.players[b.j];
+    return pa.hits - pb.hits || pb.roundWins - pa.roundWins || a.j - b.j;
+  });
+  const best = tied[0];
+  const current = all.find((c) => c.j === me.target && (pool.includes(c) || me.blockedFor < tc.blockedGrace));
+  if (current && current.j !== best.j && best.d > current.d * (1 - tc.switchMargin)) return current.j;
+  return best.j;
 }
 
-function updateFacing(state: GameState): void {
+// `dt` is how much time has passed, for how long each target has been
+// behind a wall (0 when players are just placed).
+function updateFacing(state: GameState, dt = 0): void {
   state.players.forEach((p, i) => {
     if (p.out) return;
-    p.target = nearestOpponent(state, i);
-    if (p.target === null) return;
-    const t = state.players[p.target];
+    const target = chooseTarget(state, i);
+    if (target !== p.target) p.blockedFor = 0;
+    p.target = target;
+    if (target === null) return;
+    const t = state.players[target];
     const d = normalize(sub(t.pos, p.pos));
     if (d.x !== 0 || d.y !== 0) p.facing = d;
     p.lineOfSight = hasLineOfSight(p.pos, t.pos, state.arena, state.cfg);
+    p.blockedFor = p.lineOfSight ? 0 : p.blockedFor + dt;
   });
 }
 

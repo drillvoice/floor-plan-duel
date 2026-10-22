@@ -66,6 +66,22 @@ export const CONFIG = {
     margin: 0.4,
   },
 
+  // Who auto-aim shoots at, when there's more than one opponent: the nearest
+  // one with a clear shot (or the nearest of all if none has one).
+  targeting: {
+    // Skip opponents behind a wall when another can be hit.
+    preferClearShot: true,
+    // A target that ducks behind a wall is kept this long (s) before aim
+    // moves on to someone in the open, so it doesn't flick at every wall end.
+    blockedGrace: 0.6,
+    // Keep the current target until another is this much closer (0.25 = 25%
+    // closer), so aim doesn't flick back and forth between two players.
+    switchMargin: 0.25,
+    // Opponents this close in distance (units) count as tied: aim goes to the
+    // one doing better (fewer hits taken this round, then more rounds won).
+    tieDistance: 0.5,
+  },
+
   dodge: {
     distance: 2.5,
     duration: 0.15,

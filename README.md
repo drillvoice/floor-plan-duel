@@ -49,7 +49,7 @@ On the title screen:
 
 With more than two players it's a free-for-all:
 
-- Auto-aim targets whoever is **nearest** to you, switching as people move (ties go to the lower-numbered player). A small dot in each shooter's colour sits on the edge of their target, on the side they're shooting from, so you can see who's aiming at you.
+- Auto-aim targets the **nearest** opponent you have a clear shot at (or the nearest of all if a wall blocks everyone). It sticks with its target until someone else is 25% closer, and for 0.6 s after the target ducks behind a wall, so it doesn't flick back and forth. Opponents within half a unit of the same distance count as tied, and aim goes to whoever is doing better: fewer hits taken this round, then more rounds won. These numbers are in `config.ts` under `targeting`. A small dot in each shooter's colour sits on the edge of their target, on the side they're shooting from, so you can see who's aiming at you.
 - A bullet is aimed at its shooter's target but hits any other player it touches on the way.
 - Three hits knock you out of the round: you're greyed out and can't move, shoot or be hit. The last player standing wins the round, and the first to win 3 rounds wins the match.
 - Each map has four spawn points. Players move round them by one each round, so nobody keeps the best spot.

@@ -1,10 +1,11 @@
 import { BotPlayer, type Difficulty } from './bot/bot';
+import { emptyTouchState, TouchPlayer } from './input/touch';
 import { CONFIG, KEY_BINDINGS } from './config';
 import { Keyboard, KeyboardPlayer } from './input/keyboard';
 import type { InputSource } from './input/types';
 import { lastEditedMap, listSavedMaps } from './maps/storage';
 import { PhoneHost } from './net/host';
-import { PhonePlayer, type HostScreen } from './net/protocol';
+import { cleanName, PhonePlayer, type HostScreen } from './net/protocol';
 import { BUILT_IN_MAPS, copyOfBuiltIn } from './maps/builtin';
 import { Sound } from './render/audio';
 import { cycleLook, loadLooks, saveLooks } from './render/looks';
@@ -12,13 +13,15 @@ import { Music } from './render/music';
 import { COLORS, modifierReel, Renderer } from './render/renderer';
 import { Editor } from './screens/editor';
 import { HotseatLobby } from './screens/hotseat';
+import { isTouchOnly, MatchOverlay, MobileMenu, type OverlayMode } from './screens/mobile';
 import { PhoneLobby } from './screens/phones';
 import { createGame, step } from './sim/step';
 import type { GameState, MapData } from './sim/types';
 
-type MatchFrom = 'title' | 'editor' | 'hotseat' | 'phones';
+type MatchFrom = 'title' | 'editor' | 'hotseat' | 'phones' | 'mobile';
 type Screen =
   | { kind: 'title' }
+  | { kind: 'mobile' }
   | { kind: 'editor' }
   | { kind: 'hotseat' }
   | { kind: 'phones' }
@@ -198,6 +201,113 @@ function openPhoneLobby(): void {
   keyboard.clear();
 }
 
+// Phone-only play: on a touch-only device the game opens on a touch menu
+// instead of the keyboard title screen, and you play a bot on the phone.
+const mobile = isTouchOnly();
+const MOBILE_BOT_KEY = 'fpd.mobile.bot';
+// Shared with the phone controller, so the phone remembers one name.
+const MOBILE_NAME_KEY = 'fpd.pad.name';
+let mobileBot: Difficulty = 'normal';
+let mobileName = '';
+try {
+  const saved = localStorage.getItem(MOBILE_BOT_KEY);
+  if (saved === 'easy' || saved === 'normal' || saved === 'hard') mobileBot = saved;
+  mobileName = cleanName(localStorage.getItem(MOBILE_NAME_KEY) ?? '');
+} catch {
+  // Storage unavailable: keep the defaults.
+}
+function saveMobile(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // Not saved; the choice still applies this session.
+  }
+}
+
+const touchState = emptyTouchState();
+const touchPlayer = new TouchPlayer(touchState);
+
+const mobileMenu = new MobileMenu({
+  settings: () => ({
+    look: looks[0],
+    name: mobileName,
+    bot: mobileBot,
+    mapName: selectedMap().name,
+    mapCount: availableMaps().length,
+    rotation: rotationOn,
+    modifiers: modifiersOn,
+    sound: !sound.muted,
+    music: music.enabled,
+  }),
+  cycleLook: (step) => {
+    looks[0] = cycleLook(looks[0], step);
+    saveLooks(looks);
+  },
+  setName: (name) => {
+    mobileName = cleanName(name);
+    saveMobile(MOBILE_NAME_KEY, mobileName);
+  },
+  setBot: (bot) => {
+    mobileBot = bot;
+    saveMobile(MOBILE_BOT_KEY, bot);
+  },
+  cycleMap: (step) => {
+    const count = availableMaps().length;
+    mapIndex = (mapIndex + step + count) % count;
+  },
+  toggleRotation: () => toggleRotation(),
+  toggleModifiers: () => toggleModifiers(),
+  toggleSound: () => sound.toggleMute(),
+  toggleMusic: () => music.toggle(),
+  onPlay: () => {
+    // Full screen hides the browser bar, and Android can then hold the
+    // phone sideways. Where neither works, the overlay asks them to rotate.
+    void document.documentElement
+      .requestFullscreen?.()
+      .then(() => (window.screen.orientation as { lock?: (o: string) => Promise<void> }).lock?.('landscape'))
+      .catch(() => {});
+    mobileMenu.close();
+    startMatch(selectedMap(), 'mobile');
+  },
+  color: COLORS.players[0],
+});
+
+const matchOverlay = new MatchOverlay(touchState, COLORS.players[0], {
+  onPause: () => {
+    if (screen.kind === 'match' && screen.state.phase !== 'matchOver') screen.paused = true;
+  },
+  onResume: () => {
+    if (screen.kind === 'match' && !inPortrait()) screen.paused = false;
+  },
+  onQuit: () => {
+    if (screen.kind === 'match') leaveMatch(screen);
+  },
+  onRematch: () => {
+    if (screen.kind === 'match') startMatch(screen.map, 'mobile');
+  },
+});
+
+function openMobileMenu(): void {
+  screen = { kind: 'mobile' };
+  mobileMenu.open();
+}
+
+const inPortrait = () => window.innerHeight > window.innerWidth;
+
+function overlayMode(): OverlayMode {
+  if (screen.kind !== 'match' || screen.from !== 'mobile') return 'hidden';
+  if (screen.state.phase === 'matchOver') return 'over';
+  return screen.paused ? 'paused' : 'playing';
+}
+
+if (mobile) {
+  // A game screen should never zoom on a double tap.
+  document.querySelector('meta[name=viewport]')?.setAttribute('content', 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no');
+  // Phones only allow sound after a touch.
+  document.addEventListener('pointerup', () => sound.unlock(), { capture: true });
+  openMobileMenu();
+}
+
 // One-off actions from the phones.
 phones.onEvent = (e) => {
   sound.unlock();
@@ -256,12 +366,20 @@ function startMatch(map: MapData, from: MatchFrom = 'title', hotseat?: HotseatMa
     renderer.looks = hotseat.looks;
     renderer.names = hotseat.names;
     renderer.matchOverHint = 'Enter or Esc: back to the hotseat line-up';
+  } else if (from === 'mobile') {
+    touchPlayer.reset();
+    inputs = [touchPlayer, new BotPlayer(mobileBot, seed * 2 + 2)];
+    renderer.looks = [looks[0], looks[1]];
+    renderer.names = [mobileName || 'You', 'Bot'];
+    renderer.matchOverHint = '';
   } else {
     inputs = makeInputs(seed);
     renderer.looks = sideLooks();
     renderer.names = sideNames();
     renderer.matchOverHint = 'Enter for a rematch · Esc for title';
   }
+  renderer.compact = from === 'mobile';
+  renderer.pausedHint = from === 'mobile' ? '' : 'Esc to resume · Q to quit to title';
   screen = { kind: 'match', state: createGame(matchMaps(map, from), seed, cfg), map, paused: false, from, recorded: false };
   keyboard.clear();
   music.start();
@@ -272,6 +390,7 @@ function leaveMatch(match: Extract<Screen, { kind: 'match' }>): void {
   if (match.from === 'editor') openEditor(editor.currentMap());
   else if (match.from === 'hotseat') openLobby();
   else if (match.from === 'phones') openPhoneLobby();
+  else if (match.from === 'mobile') openMobileMenu();
   else screen = { kind: 'title' };
 }
 
@@ -290,7 +409,7 @@ keyboard.onPress((code) => {
     if (music.enabled && screen.kind === 'match' && screen.state.phase !== 'matchOver') music.start();
     return;
   }
-  if (screen.kind === 'editor' || screen.kind === 'hotseat' || screen.kind === 'phones') return; // they handle their own keys
+  if (screen.kind === 'editor' || screen.kind === 'hotseat' || screen.kind === 'phones' || screen.kind === 'mobile') return; // they handle their own keys
   if (screen.kind === 'title') {
     if (code === 'Enter' || code === 'Space') startMatch(selectedMap());
     else if (code === 'Digit1') cycleSlot(0);
@@ -334,6 +453,10 @@ keyboard.onPress((code) => {
 window.addEventListener('blur', () => {
   if (screen.kind === 'match' && screen.state.phase !== 'matchOver') screen.paused = true;
 });
+// On a phone, also when the app is switched away from.
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && screen.kind === 'match' && screen.state.phase !== 'matchOver') screen.paused = true;
+});
 
 // Fixed-timestep loop: the sim always advances in 1/60 s ticks regardless of
 // display refresh rate.
@@ -357,8 +480,11 @@ function frame(now: number): void {
   const elapsed = Math.min(0.1, (now - last) / 1000);
   last = now;
   fullscreenButton.hidden =
-    !document.fullscreenEnabled || (screen.kind !== 'title' && screen.kind !== 'hotseat' && screen.kind !== 'phones');
+    mobile || !document.fullscreenEnabled || (screen.kind !== 'title' && screen.kind !== 'hotseat' && screen.kind !== 'phones');
   phones.update(hostScreen(), phonesCanStart(), COLORS.players);
+  // Held upright, a phone-only match waits (the overlay asks them to rotate).
+  if (screen.kind === 'match' && screen.from === 'mobile' && screen.state.phase !== 'matchOver' && inPortrait()) screen.paused = true;
+  matchOverlay.setMode(overlayMode());
 
   if (screen.kind === 'title') {
     accumulator = 0;
@@ -371,7 +497,7 @@ function frame(now: number): void {
   } else if (screen.kind === 'editor') {
     accumulator = 0;
     editor.draw();
-  } else if (screen.kind === 'hotseat' || screen.kind === 'phones') {
+  } else if (screen.kind === 'hotseat' || screen.kind === 'phones' || screen.kind === 'mobile') {
     accumulator = 0;
     renderer.drawBackdrop();
   } else {
@@ -392,6 +518,7 @@ function frame(now: number): void {
             phones.room.buzz(e.player);
             phones.nudge();
           }
+          if (e.type === 'hit' && inputs[e.player] === touchPlayer) navigator.vibrate?.(160);
         }
         sound.handleEvents(s.events, s);
         if (s.events.some((e) => e.type === 'hit' && e.hits >= s.cfg.round.hitsToLose)) slowmo = SLOWMO_DURATION;

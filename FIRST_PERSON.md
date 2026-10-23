@@ -66,11 +66,25 @@ Everything already works in the sim; these are the drawing touches:
 - **Power-up telegraphs and lifespan rings:** flat rings on the floor, projected like the grid.
 - **Lights Out (dark maps):** distance fog to black, the opponent's carried light as a glow, and bullets, power-ups and muzzle flashes ignoring the fog, so the map plays as it does from above.
 
+## Trying the test version
+
+Step 1 below is built, and a bit more. Add `?fp` to the address (`http://localhost:5173/?fp` with `npm run dev`) and start a match as usual. Nothing on screen mentions it, and without `?fp` the game is unchanged.
+
+- One person against a bot gets the full screen; two people on the keyboard get split screen, P1 on the left. With two bots it follows P1.
+- W walks toward your opponent, S backs off, A and D strafe round them; dodge and shoot as usual. Phone play (`?fp&mobile`) works the same way, up on the joystick meaning forward.
+- Drawn: walls (with outlines and a grid along them), the floor grid, the opponent with their look, bullets with floor shadows, power-ups with telegraph rings and lifespan rings, health crates, laser lines, Ghost and Shield on the opponent, and fog (much thicker on Lights Out). The usual slim HUD runs along the top, and each view has its player's dodge arrow (up is straight ahead) and charges at the bottom, plus a red flash when hit.
+- Not yet: the minimap, edge arrows, paint splats, muzzle flashes, callouts, or a toggle on the title screen.
+
+First impressions from screenshots, to check in play:
+
+- Lock-on works well in open rooms. With a wall between you, though, you stare at the wall your opponent is behind (The Office starts this way), and finding the way round means strafing blind. The minimap (step 2) is the likely fix. If it isn't enough, the next thing to try is letting the camera look where you walk while there's no line of sight.
+- Your own shots start just in front of your eyes, so they fade in over their first few units; otherwise firing fills the screen.
+
 ## Build order
 
 Each step ends with something playable, and the first one decides whether the rest is worth it.
 
-1. **Spike: walls only, one player against a bot (about a day).** `raycast.ts`, `camera.ts` and a bare `view.ts`, plus the relative input, behind a `?fp` URL flag. Walls, floor, ceiling, the opponent as a coloured billboard and bullets as dots. **Go/no-go:** is dodging slow bullets in first person fun, and readable? Try it against Easy and Normal bots on The Flat and Bathroom Brawl. If it isn't, try the floor shadows and grid from step 2 before giving up.
+1. **Spike: walls only, one player against a bot (built; see above).** `raycast.ts`, `camera.ts` and a bare `view.ts`, plus the relative input, behind a `?fp` URL flag. Walls, floor, ceiling, the opponent as a coloured billboard and bullets as dots. **Go/no-go:** is dodging slow bullets in first person fun, and readable? Try it against Easy and Normal bots on The Flat and Bathroom Brawl. If it isn't, try the floor shadows and grid from step 2 before giving up.
 2. **Readability.** Depth-buffered sprites (players with their looks, bullets with trails and shadows, power-ups, health crates), the floor grid, the laser beam, the minimap and off-screen arrows.
 3. **Split screen and HUD.** Two views side by side, each with its player's hits, dodge charge and direction, power-up icons with timers, the "blocked" indicator and a small round and score bar shared across the top. Countdown, modifier reel, pause and results reuse the existing overlay over the whole screen.
 4. **Juice.** Muzzle flash, hit flash and shake per view, a quick field-of-view kick on dodges, head bob, near-miss "Close!" callouts, slow motion on knockouts (already driven by the game loop).

@@ -144,7 +144,7 @@ All tunable numbers live in `src/config.ts`.
 - `src/settings.ts`: the choices made on the title screen and phone menu. `src/prefs.ts`: guarded access to the browser's storage, used for everything the game saves.
 - `src/sim/`: the game rules. A pure fixed 60 Hz `step(state, inputs)` with a seeded RNG and no DOM or clock, so a match is reproducible from its seed, maps and inputs. Power-ups and round modifiers live here too.
 - `src/input/`: keyboard and touch input (`touch.ts` is shared by phone controllers and phone play). `src/bot/`: the bot and A* pathfinding. All produce the same `{ move, dodge, shoot }` input.
-- `src/render/`: canvas drawing, effects, player looks, and synthesised sound and music. Never changes game state. `renderer.ts` draws the arena and effects; `hud.ts`, `overlay.ts` and `title.ts` draw the HUD, the countdown and results, and the title screen; `layout.ts` places the arena on screen.
+- `src/render/`: canvas drawing, effects, player looks, and synthesised sound and music. Never changes game state. `renderer.ts` draws the arena and effects; `hud.ts`, `overlay.ts` and `title.ts` draw the HUD, the countdown and results, and the title screen; `layout.ts` places the arena on screen. `firstPerson/` is a test version of a first-person view, opened with `?fp` (see [FIRST_PERSON.md](FIRST_PERSON.md)).
 - `src/maps/`: the built-in maps, validation and saved-map storage.
 - `src/screens/`: the DOM screens: map editor, hotseat lobby, phone lobby, and the phone menu and in-match touch overlay.
 - `src/hotseat/`: the hotseat queue and scoreboard, with no DOM.

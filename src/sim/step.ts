@@ -19,6 +19,7 @@ import {
   scheduleNextPowerUp,
   updatePowerUps,
 } from './powerups';
+import { noStats, tallyStats } from './stats';
 import type { Bullet, GameState, Laser, MapData, PlayerIndex, PlayerInput, PlayerState } from './types';
 import { add, closestPointOnSegment, dist, distPointSegment, dot, len, normalize, scale, sub, type Vec2 } from './vec';
 
@@ -62,7 +63,7 @@ function newPlayer(): PlayerState {
     lastMove: { x: 0, y: 0 },
     hits: 0,
     roundWins: 0,
-    nearMisses: 0,
+    stats: noStats(),
     fireCooldown: 0,
     dodgeCharges: 1,
     dodgeCooldown: 0,
@@ -156,6 +157,7 @@ export function step(state: GameState, inputs: [PlayerInput, PlayerInput]): Game
     case 'matchOver':
       break;
   }
+  tallyStats(state);
   return state;
 }
 
@@ -199,6 +201,7 @@ function updatePlayer(state: GameState, i: PlayerIndex, input: PlayerInput, dt: 
     p.dash.remaining -= t;
     if (hitWall || p.dash.remaining <= EPS) p.dash = null;
     p.vel = { x: 0, y: 0 };
+    p.stats.distance += dist(before, p.pos);
     return;
   }
 
@@ -207,6 +210,7 @@ function updatePlayer(state: GameState, i: PlayerIndex, input: PlayerInput, dt: 
   if (l > 1) move = scale(move, 1 / l); // diagonals aren't faster
   moveCircle(p.pos, scale(move, moveSpeedFor(p.effects, state) * dt), cfg.player.radius, arena, cfg);
   p.vel = scale(sub(p.pos, before), 1 / dt);
+  p.stats.distance += dist(before, p.pos);
 }
 
 // A dodge dashes the way the player is moving; standing still, the way they
@@ -319,9 +323,8 @@ function updateLasers(state: GameState, dt: number): void {
         state.events.push({ type: 'shieldBlock', player: targetIndex, pos: at });
       } else if (hit) {
         target.hits++;
-        state.events.push({ type: 'hit', player: targetIndex, pos: at, hits: target.hits });
+        state.events.push({ type: 'hit', player: targetIndex, pos: at, hits: target.hits, range: dist(l.from, at) });
       } else if (gap < cfg.nearMiss.margin) {
-        target.nearMisses++;
         state.events.push({ type: 'nearMiss', player: targetIndex, pos: at });
       }
     }
@@ -351,7 +354,9 @@ function updateBullets(state: GameState, dt: number): void {
           state.events.push({ type: 'shieldBlock', player: targetIndex, pos: { ...b.pos } });
         } else {
           target.hits++;
-          state.events.push({ type: 'hit', player: targetIndex, pos: { ...b.pos }, hits: target.hits });
+          // Speed never changes in flight (bounces keep it), so this is the distance travelled.
+          const range = (b.age + (dt * (s + 1)) / steps) * len(b.vel);
+          state.events.push({ type: 'hit', player: targetIndex, pos: { ...b.pos }, hits: target.hits, range });
         }
         alive = false;
       } else if (wall && b.bounces > 0) {
@@ -386,7 +391,6 @@ function updateBullets(state: GameState, dt: number): void {
 function checkNearMiss(state: GameState, b: Bullet, target: PlayerIndex): void {
   if (b.nearMissed || b.closestGap >= state.cfg.nearMiss.margin) return;
   b.nearMissed = true;
-  state.players[target].nearMisses++;
   state.events.push({ type: 'nearMiss', player: target, pos: { ...b.pos } });
 }
 

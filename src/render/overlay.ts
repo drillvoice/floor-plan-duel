@@ -1,8 +1,10 @@
 // Text over the whole match: the countdown (with the round-modifier reel),
-// round and match results, pause, and the sudden-death banner.
+// round results, the match results with each player's stats, pause, and the
+// sudden-death banner.
 
 import { MODIFIER_IDS } from '../config';
 import { MODIFIERS } from '../sim/modifiers';
+import type { PlayerStats } from '../sim/stats';
 import type { GameState, PlayerIndex } from '../sim/types';
 import { uiScale, type MatchView } from './layout';
 import { COLORS, hexAlpha, MODIFIER_COLOR, NEAR_MISS_COLOR, TIMER_RED } from './theme';
@@ -67,15 +69,15 @@ export function drawOverlay(ctx: CanvasRenderingContext2D, view: MatchView, stat
     title = w === null ? 'Draw' : `${label(view, w)} takes the round`;
     sub = w === null ? 'Replaying the round' : '';
   } else if (state.phase === 'matchOver' && state.matchWinner !== null) {
-    title = `${label(view, state.matchWinner)} wins!`;
-    sub = hints.matchOver;
+    drawMatchResults(ctx, view, state, state.matchWinner, hints.matchOver);
+    return;
   } else return;
 
   ctx.fillStyle = 'rgba(10,11,15,0.55)';
   ctx.fillRect(0, 0, view.width, view.height);
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  const winner = state.phase === 'matchOver' ? state.matchWinner : state.phase === 'roundOver' ? state.lastRoundWinner : null;
+  const winner = state.phase === 'roundOver' ? state.lastRoundWinner : null;
   ctx.fillStyle = winner !== null && !paused ? COLORS.players[winner] : COLORS.text;
   const u = uiScale(view);
   // On a phone the buttons go under the text, so lift it.
@@ -85,12 +87,98 @@ export function drawOverlay(ctx: CanvasRenderingContext2D, view: MatchView, stat
   ctx.fillStyle = COLORS.text;
   ctx.font = `500 ${18 * u}px system-ui, sans-serif`;
   ctx.fillText(sub, view.width / 2, cy + 32 * u);
-  if (state.phase === 'matchOver' && !paused) {
-    const [a, b] = state.players.map((p) => p.nearMisses);
-    ctx.fillStyle = NEAR_MISS_COLOR;
-    ctx.font = `600 ${16 * u}px system-ui, sans-serif`;
-    ctx.fillText(`Clutch dodges: ${view.names[0]} ${a} · ${view.names[1]} ${b}`, view.width / 2, cy + (sub ? 68 : 36) * u);
+}
+
+// One line of the match stats: what each player scored, and who did better
+// (null when it's a tie or neither way is better).
+export interface StatRow {
+  label: string;
+  values: [string, string];
+  best: PlayerIndex | null;
+}
+
+export function statRows([a, b]: readonly [PlayerStats, PlayerStats]): StatRow[] {
+  const rows: StatRow[] = [];
+  // `better` says which way wins: higher, lower, or neither.
+  const row = (label: string, get: (s: PlayerStats) => number, show: (n: number, s: PlayerStats) => string, better: 1 | -1 | 0) => {
+    const [x, y] = [get(a), get(b)];
+    const best = better === 0 || x === y ? null : (x - y) * better > 0 ? 0 : 1;
+    rows.push({ label, values: [show(x, a), show(y, b)], best });
+  };
+  const count = (n: number) => String(n);
+  const metres = (n: number) => (n > 0 ? `${n.toFixed(1)} m` : '–');
+  row('Shots fired', (s) => s.shots, count, 0);
+  row('Hits', (s) => s.hits, count, 1);
+  // With no shots there's no accuracy to show or compare.
+  row('Accuracy', (s) => (s.shots > 0 ? s.hits / s.shots : -1), (n) => (n < 0 ? '–' : `${Math.round(n * 100)}%`), 1);
+  row('Hits taken', (s) => s.hitsTaken, count, -1);
+  row('Longest hit', (s) => s.longestHit, metres, 1);
+  row('Dodges', (s) => s.dodges, count, 0);
+  row('Clutch dodges', (s) => s.clutchDodges, count, 1);
+  row('Power-ups', (s) => s.powerUps, count, 1);
+  row('Flawless rounds', (s) => s.flawlessRounds, count, 1);
+  row('Distance run', (s) => s.distance, (n) => `${Math.round(n)} m`, 0);
+  return rows;
+}
+
+// The end of the match: who won, then a table of both players' stats with
+// the better number in each row in that player's colour.
+function drawMatchResults(ctx: CanvasRenderingContext2D, view: MatchView, state: GameState, winner: PlayerIndex, hint: string): void {
+  const rows = statRows([state.players[0].stats, state.players[1].stats]);
+  const ROW = 26;
+  const HEADER = 34;
+  const COL = 150; // how far each player's column is from the middle
+  const height = 64 + (hint ? 30 : 0) + 24 + HEADER + rows.length * ROW;
+  // On a phone the Rematch and Menu buttons sit along the bottom.
+  const u = uiScale(view);
+  const below = view.compact ? 72 : 0;
+  const top = Math.max(12, (view.height - below - height * u) / 2);
+
+  ctx.fillStyle = 'rgba(10,11,15,0.75)';
+  ctx.fillRect(0, 0, view.width, view.height);
+  // Laid out at full size from the top middle, then shrunk as a whole on a
+  // short phone screen.
+  ctx.save();
+  ctx.translate(view.width / 2, top);
+  ctx.scale(u, u);
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = COLORS.players[winner];
+  ctx.font = '800 44px system-ui, sans-serif';
+  ctx.fillText(`${label(view, winner)} wins!`, 0, 28, view.width / u - 32);
+  let y = 64;
+  if (hint) {
+    ctx.fillStyle = COLORS.muted;
+    ctx.font = '500 17px system-ui, sans-serif';
+    ctx.fillText(hint, 0, y + 8);
+    y += 30;
   }
+  y += 24;
+
+  ctx.font = '700 18px system-ui, sans-serif';
+  for (const i of [0, 1] as const) {
+    ctx.fillStyle = COLORS.players[i];
+    ctx.fillText(label(view, i), i === 0 ? -COL : COL, y + HEADER / 2 - 4, 2 * COL - 130);
+  }
+  y += HEADER;
+
+  rows.forEach((r, n) => {
+    const mid = y + n * ROW + ROW / 2;
+    if (n % 2 === 0) {
+      ctx.fillStyle = 'rgba(255,255,255,0.05)';
+      ctx.fillRect(-COL - 70, mid - ROW / 2, 2 * COL + 140, ROW);
+    }
+    // Clutch dodges match the colour of the "Close!" callouts that count them.
+    ctx.fillStyle = r.label === 'Clutch dodges' ? NEAR_MISS_COLOR : COLORS.muted;
+    ctx.font = '500 15px system-ui, sans-serif';
+    ctx.fillText(r.label, 0, mid);
+    for (const i of [0, 1] as const) {
+      ctx.fillStyle = r.best === i ? COLORS.players[i] : COLORS.text;
+      ctx.font = `${r.best === i ? 800 : 500} 18px system-ui, sans-serif`;
+      ctx.fillText(r.values[i], i === 0 ? -COL : COL, mid);
+    }
+  });
+  ctx.restore();
 }
 
 // Countdown with a modifier: a slot-machine reel of modifier names that

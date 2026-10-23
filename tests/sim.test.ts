@@ -264,7 +264,7 @@ describe('near misses', () => {
     const { s, nearMisses } = flyBy(0.9); // passes 0.25 units from P2's edge
     expect(s.players[1].hits).toBe(0);
     expect(nearMisses).toBe(1);
-    expect(s.players[1].nearMisses).toBe(1);
+    expect(s.players[1].stats.clutchDodges).toBe(1);
   });
 
   it('ignores bullets that pass well clear', () => {

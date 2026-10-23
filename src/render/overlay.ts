@@ -6,6 +6,7 @@ import { MODIFIER_IDS } from '../config';
 import { MODIFIERS } from '../sim/modifiers';
 import type { PlayerStats } from '../sim/stats';
 import type { GameState, PlayerIndex } from '../sim/types';
+import { awards } from './awards';
 import { uiScale, type MatchView } from './layout';
 import { COLORS, hexAlpha, MODIFIER_COLOR, NEAR_MISS_COLOR, TIMER_RED } from './theme';
 
@@ -121,12 +122,15 @@ export function statRows([a, b]: readonly [PlayerStats, PlayerStats]): StatRow[]
   return rows;
 }
 
-// The end of the match: who won, then a table of both players' stats with
-// the better number in each row in that player's colour.
+// The end of the match: who won, then each player's award and a table of
+// both players' stats with the better number in each row in that player's
+// colour.
 function drawMatchResults(ctx: CanvasRenderingContext2D, view: MatchView, state: GameState, winner: PlayerIndex, hint: string): void {
-  const rows = statRows([state.players[0].stats, state.players[1].stats]);
+  const stats = [state.players[0].stats, state.players[1].stats] as const;
+  const rows = statRows(stats);
+  const won = awards(stats, state.baseCfg.awards);
   const ROW = 26;
-  const HEADER = 34;
+  const HEADER = 58;
   const COL = 150; // how far each player's column is from the middle
   const height = 64 + (hint ? 30 : 0) + 24 + HEADER + rows.length * ROW;
   // On a phone the Rematch and Menu buttons sit along the bottom.
@@ -155,10 +159,14 @@ function drawMatchResults(ctx: CanvasRenderingContext2D, view: MatchView, state:
   }
   y += 24;
 
-  ctx.font = '700 18px system-ui, sans-serif';
   for (const i of [0, 1] as const) {
+    const x = i === 0 ? -COL : COL;
     ctx.fillStyle = COLORS.players[i];
-    ctx.fillText(label(view, i), i === 0 ? -COL : COL, y + HEADER / 2 - 4, 2 * COL - 130);
+    ctx.font = '700 18px system-ui, sans-serif';
+    ctx.fillText(label(view, i), x, y + 12, 2 * COL - 130);
+    ctx.fillStyle = MODIFIER_COLOR;
+    ctx.font = '700 15px system-ui, sans-serif';
+    ctx.fillText(`${won[i].icon} ${won[i].name}`, x, y + 36, 2 * COL - 130);
   }
   y += HEADER;
 

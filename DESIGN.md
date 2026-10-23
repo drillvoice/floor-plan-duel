@@ -96,6 +96,15 @@ The numbers come from the sim (Oct 2026). The Easy bot reacts in 0.35 s, about a
 
 If round-long stacking proves to snowball, try spawning power-ups slightly closer to whoever is losing.
 
+**Health crate.** A comeback item, like the health crates in Worms. Taking it undoes one hit, never past full health. It isn't in the random pool; it has its own rule (`powerUps.healthCrate`):
+
+- It only spawns for the player behind on rounds, once they've taken a hit this round, and only while they aren't ahead on hits this round (a crate shouldn't widen a lead). So never in round 1 or a tied match, and never in One-Hit Wonder rounds.
+- The chance each second is 6% × rounds behind × hits taken, up to 30%: one round down with one hit, a crate turns up after about 17 s on average; two down with two hits, after about 3 s. At most one per round.
+- It appears 3–7 units from that player and nearer them than their opponent, so they still have to go and get it. Either player can take it: at full health, taking it just denies it.
+- It's white with a red cross, so it isn't mistaken for the gold, blue and red power-ups or for a player's colour.
+
+In the sim (Oct 2026) a crate turns up in about a quarter of rounds, and 95% are taken by the player who's behind. Between evenly matched Normal bots it lifts the trailing player's round win rate from 50% to 57–60%. With an Easy bot against a Normal one, the Easy bot's round win rate goes from 25% to 27%: a nudge, not a rescue, which is the intent. Rounds per match go up slightly (4.14 to about 4.3).
+
 ## Maps and editor
 
 A map is a list of wall line segments plus two spawn points, saved as JSON. The MVP shipped one built-in map and a simple editor; photo import comes in v2 and produces the same JSON.
@@ -190,6 +199,7 @@ The MVP proves one thing: dodging slow auto-aimed bullets on a shared laptop is 
 - **Hotseat mode (done):** still 1v1, but for a group taking turns. Players enter their names, the loser of each match swaps out for the next person in the queue, and a scoreboard tracks who's playing and everyone's wins.
 - **Photo looks:** use a picture of your face inside your player circle, alongside the icon looks.
 
+- **Health crate (done):** a comeback item for the player behind on rounds; see Power-ups.
 - **Laser (done):** a fourteenth power-up. Shots become instant zaps after a short, visible lock-on; see Power-ups.
 - **Round length (settled):** bot rounds average about 28 s, under the original 40–70 s target, but they feel right in play, so the target is now 20–70 s.
 - **Phone play (done):** on a touch-only device the game runs entirely on the phone against a bot. Landscape, with the whole arena scaled to fill the screen under a one-row HUD, and the controller's joystick, Dodge and Shoot laid see-through over the bottom corners (the same `TouchControls` code as phone controllers). Desktops are unaffected.

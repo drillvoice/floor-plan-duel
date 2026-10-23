@@ -43,6 +43,7 @@ export function createGame(maps: MapData | readonly MapData[], seed: number, cfg
     lasers: [],
     powerUps: [],
     nextPowerUpIn: 0,
+    cratesThisRound: 0,
     nextId: 1,
     rng: seed >>> 0,
     lastRoundWinner: null,
@@ -87,6 +88,7 @@ function startRound(state: GameState): void {
   state.bullets = [];
   state.lasers = [];
   state.powerUps = [];
+  state.cratesThisRound = 0;
   scheduleNextPowerUp(state);
   for (const i of [0, 1] as const) {
     const p = state.players[i];

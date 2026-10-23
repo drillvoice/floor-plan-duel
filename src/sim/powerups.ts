@@ -70,8 +70,9 @@ export function updatePowerUps(state: GameState, dt: number): void {
   state.nextPowerUpIn -= dt;
   if (state.nextPowerUpIn <= EPS) {
     scheduleNextPowerUp(state);
-    if (state.powerUps.length < pc.maxOnMap) spawnPowerUp(state);
+    if (state.powerUps.filter((pu) => pu.kind !== 'healthCrate').length < pc.maxOnMap) spawnPowerUp(state);
   }
+  maybeSpawnHealthCrate(state, dt);
 
   const kept = [];
   for (const pu of state.powerUps) {
@@ -84,8 +85,16 @@ export function updatePowerUps(state: GameState, dt: number): void {
       (i) => dist(state.players[i].pos, pu.pos) < state.cfg.player.radius + pc.radius,
     );
     if (taker !== undefined) {
-      applyPowerUp(state, taker, pu.kind);
-      state.events.push({ type: 'pickup', player: taker, kind: pu.kind, pos: { ...pu.pos } });
+      if (pu.kind === 'healthCrate') {
+        // At full health it does nothing, but it's gone: taking it is a denial.
+        const p = state.players[taker];
+        const healed = p.hits > 0;
+        if (healed) p.hits--;
+        state.events.push({ type: 'healthCrate', player: taker, pos: { ...pu.pos }, healed });
+      } else {
+        applyPowerUp(state, taker, pu.kind);
+        state.events.push({ type: 'pickup', player: taker, kind: pu.kind, pos: { ...pu.pos } });
+      }
       continue;
     }
     pu.remaining -= dt;
@@ -116,6 +125,47 @@ function spawnPowerUp(state: GameState): void {
   const pos = cellCenter(grid, cell);
   state.powerUps.push({ id: state.nextId++, kind, pos, telegraph: pc.telegraph, remaining: lifespan, lifespan });
   state.events.push({ type: 'powerUpTelegraph', kind, pos: { ...pos } });
+}
+
+// Who a health crate would be for right now, and how likely one is per
+// second: the player behind on rounds, if they've taken a hit this round and
+// aren't ahead on hits. Null when no crate should spawn.
+export function healthCrateOdds(state: GameState): { player: PlayerIndex; chancePerSecond: number } | null {
+  const hc = state.cfg.powerUps.healthCrate;
+  const [a, b] = state.players;
+  if (!hc.enabled || a.roundWins === b.roundWins) return null;
+  const player: PlayerIndex = a.roundWins < b.roundWins ? 0 : 1;
+  const me = state.players[player];
+  const opp = state.players[player === 0 ? 1 : 0];
+  if (me.hits === 0 || me.hits < opp.hits) return null;
+  const behind = opp.roundWins - me.roundWins;
+  return { player, chancePerSecond: Math.min(hc.maxChancePerSecond, hc.chancePerSecond * behind * me.hits) };
+}
+
+function maybeSpawnHealthCrate(state: GameState, dt: number): void {
+  const pc = state.cfg.powerUps;
+  const hc = pc.healthCrate;
+  if (state.cratesThisRound >= hc.maxPerRound || state.powerUps.some((pu) => pu.kind === 'healthCrate')) return;
+  const odds = healthCrateOdds(state);
+  if (!odds || nextRandom(state) >= odds.chancePerSecond * dt) return;
+  const me = state.players[odds.player];
+  const opp = state.players[odds.player === 0 ? 1 : 0];
+  const grid = state.arena.grid;
+  const candidates: number[] = [];
+  for (let i = 0; i < grid.open.length; i++) {
+    if (!grid.open[i] || grid.clearance[i] < pc.minWallDistance) continue;
+    const c = cellCenter(grid, i);
+    const d = dist(me.pos, c);
+    if (d < hc.minDistance || d > hc.maxDistance || d >= dist(opp.pos, c)) continue;
+    if (state.powerUps.some((p) => dist(p.pos, c) < pc.minPowerUpDistance)) continue;
+    candidates.push(i);
+  }
+  // Nowhere suitable (e.g. the players are right next to each other): try again later.
+  if (candidates.length === 0) return;
+  const pos = cellCenter(grid, candidates[Math.floor(nextRandom(state) * candidates.length)]);
+  state.cratesThisRound++;
+  state.powerUps.push({ id: state.nextId++, kind: 'healthCrate', pos, telegraph: pc.telegraph, remaining: hc.lifespan, lifespan: hc.lifespan });
+  state.events.push({ type: 'powerUpTelegraph', kind: 'healthCrate', pos: { ...pos } });
 }
 
 export function pickLifespan(state: GameState): number {

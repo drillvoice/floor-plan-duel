@@ -64,11 +64,17 @@ interface RoundRecord {
   dodges: number;
   shieldBlocks: number;
   pickups: { kind: PowerUpKind; player: PlayerIndex }[];
+  trailing: PlayerIndex | null; // behind on rounds at the start of this round
+  crates: number; // health crates spawned
+  crateTakes: { player: PlayerIndex; healed: boolean }[];
 }
 
 const rounds: RoundRecord[] = [];
 const matchWins = [0, 0];
 let unfinished = 0;
+let roundsPlayed = 0;
+let comebacks = 0; // matches won by a player who was 2 or more rounds down
+let twoDown = 0; // matches where someone was 2 or more rounds down
 let totalTicks = 0;
 const started = Date.now();
 
@@ -76,7 +82,10 @@ for (let m = 0; m < matches; m++) {
   const seed = baseSeed * 100003 + m;
   const state = createGame(map, seed, cfg);
   const bots = [new BotPlayer(d1, seed * 2 + 1), new BotPlayer(d2, seed * 2 + 2)] as const;
-  const newRound = (): RoundRecord => ({ modifier: state.modifier, winner: null, winnerSpawn: null, length: 0, suddenDeath: false, hits: 0, shots: 0, laserShots: 0, laserHits: 0, dodges: 0, shieldBlocks: 0, pickups: [] });
+  const newRound = (): RoundRecord => ({ modifier: state.modifier, winner: null, winnerSpawn: null, length: 0, suddenDeath: false, hits: 0, shots: 0, laserShots: 0, laserHits: 0, dodges: 0, shieldBlocks: 0, pickups: [],
+    trailing: state.players[0].roundWins === state.players[1].roundWins ? null : state.players[0].roundWins < state.players[1].roundWins ? 0 : 1,
+    crates: 0, crateTakes: [] });
+  const worstDeficit = [0, 0];
   let current = newRound();
   let ticks = 0;
   while (state.phase !== 'matchOver' && ticks < MAX_TICKS) {
@@ -92,6 +101,8 @@ for (let m = 0; m < matches; m++) {
       else if (e.type === 'dodge') current.dodges++;
       else if (e.type === 'shieldBlock') current.shieldBlocks++;
       else if (e.type === 'pickup') current.pickups.push({ kind: e.kind, player: e.player });
+      else if (e.type === 'powerUpTelegraph' && e.kind === 'healthCrate') current.crates++;
+      else if (e.type === 'healthCrate') current.crateTakes.push({ player: e.player, healed: e.healed });
       else if (e.type === 'roundStart') current.modifier = e.modifier;
       else if (e.type === 'roundEnd') {
         current.winner = e.winner;
@@ -103,12 +114,18 @@ for (let m = 0; m < matches; m++) {
         current.suddenDeath = state.roundTime > state.cfg.round.timeLimit;
         rounds.push(current);
         current = newRound();
+        for (const i of [0, 1] as const) worstDeficit[i] = Math.max(worstDeficit[i], state.players[1 - i].roundWins - state.players[i].roundWins);
       }
     }
   }
   totalTicks += ticks;
   if (state.matchWinner === null) unfinished++;
-  else matchWins[state.matchWinner]++;
+  else {
+    matchWins[state.matchWinner]++;
+    roundsPlayed += state.roundIndex + 1;
+    if (Math.max(...worstDeficit) >= 2) twoDown++;
+    if (worstDeficit[state.matchWinner] >= 2) comebacks++;
+  }
 }
 
 const decided = rounds.filter((r) => r.winner !== null);
@@ -157,6 +174,13 @@ const summary = {
   laserShotsPerRound: mean(rounds.map((r) => r.laserShots)),
   laserHitRate: rounds.reduce((a, r) => a + r.laserHits, 0) / Math.max(1, rounds.reduce((a, r) => a + r.laserShots, 0)),
   shieldBlocksPerRound: mean(rounds.map((r) => r.shieldBlocks)),
+  roundsPerMatch: roundsPlayed / Math.max(1, matches - unfinished),
+  // Rounds that started with someone behind on rounds: how often they won it.
+  trailingRoundWinRate: mean(decided.filter((r) => r.trailing !== null).map((r) => Number(r.winner === r.trailing))),
+  comebackRate: comebacks / Math.max(1, twoDown),
+  cratesPerRound: mean(rounds.map((r) => r.crates)),
+  crateTakenByTrailing: mean(rounds.flatMap((r) => r.crateTakes.map((t) => Number(t.player === r.trailing)))),
+  healsPerRound: mean(rounds.map((r) => r.crateTakes.filter((t) => t.healed).length)),
   powerUps: pickupStats,
   modifiers: modifierStats,
   simSeconds: totalTicks / CONFIG.tickRate,
@@ -182,6 +206,11 @@ if (asJson) {
     `Shots per round     ${summary.shotsPerRound.toFixed(1)}  (${pct(summary.hitRate)} hit)`,
     ...(summary.laserShotsPerRound > 0 ? [`Lasers per round    ${summary.laserShotsPerRound.toFixed(2)}  (${pct(summary.laserHitRate)} hit)`] : []),
     `Dodges per round    ${summary.dodgesPerRound.toFixed(1)}`,
+    `Rounds per match    ${summary.roundsPerMatch.toFixed(2)}`,
+    `Comebacks           the player behind on rounds wins ${pct(summary.trailingRoundWinRate)} of rounds; ${pct(summary.comebackRate)} of players 2 rounds down win the match`,
+    ...(summary.cratesPerRound > 0
+      ? [`Health crates       ${summary.cratesPerRound.toFixed(2)} per round, ${pct(summary.crateTakenByTrailing)} taken by the player behind, ${summary.healsPerRound.toFixed(2)} heals per round`]
+      : []),
     '',
     'Power-up        pickups/round   picked by round winner',
     ...pickupStats.map((p) => `  ${p.kind.padEnd(14)} ${p.perRound.toFixed(2).padStart(8)}        ${pct(p.byWinner).padStart(6)}`),

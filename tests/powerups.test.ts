@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { CONFIG, type Config } from '../src/config';
 import { THE_FLAT } from '../src/maps/theFlat';
 import { buildGrid, cellCenter, cellIndex } from '../src/sim/grid';
-import { applyPowerUp, noEffects, pickLifespan } from '../src/sim/powerups';
+import { applyPowerUp, healthCrateOdds, noEffects, pickLifespan } from '../src/sim/powerups';
 import { createGame, placePlayer, step } from '../src/sim/step';
 import type { GameState, MapData, PlayerInput, PowerUpKind } from '../src/sim/types';
 import { NO_INPUT } from '../src/sim/types';
@@ -364,6 +364,76 @@ describe('v2 power-ups', () => {
       step(s, [shoot, NO_INPUT]);
       expect(s.lasers).toHaveLength(0);
       expect(s.bullets).toHaveLength(1);
+    });
+  });
+
+  describe('Health crate', () => {
+    const hc = CONFIG.powerUps.healthCrate;
+    // Player 0 is a round down and has taken a hit; crates come quickly.
+    const behind = (extra: Partial<Config['powerUps']['healthCrate']> = {}) => {
+      const s = playing(cfgWith(['shield'], { spawnIntervalMin: 100, spawnIntervalMax: 100, healthCrate: { ...hc, ...extra } }));
+      s.players[1].roundWins = 1;
+      s.players[0].hits = 1;
+      return s;
+    };
+
+    it('only comes for the player behind on rounds, hurt and not ahead this round', () => {
+      const s = behind();
+      expect(healthCrateOdds(s)).toEqual({ player: 0, chancePerSecond: hc.chancePerSecond });
+      s.players[1].roundWins = 2;
+      s.players[0].hits = 2;
+      expect(healthCrateOdds(s)!.chancePerSecond).toBeCloseTo(Math.min(hc.maxChancePerSecond, hc.chancePerSecond * 4));
+      s.players[1].hits = 2;
+      expect(healthCrateOdds(s)).not.toBeNull(); // level on hits still counts
+      s.players[1].hits = 3;
+      expect(healthCrateOdds(s)).toBeNull(); // ahead on hits this round
+      s.players[1].hits = 0;
+      s.players[0].hits = 0;
+      expect(healthCrateOdds(s)).toBeNull(); // not hurt
+      s.players[0].hits = 1;
+      s.players[0].roundWins = 2;
+      expect(healthCrateOdds(s)).toBeNull(); // level on rounds, as in round 1
+    });
+
+    it('never spawns in a tied match', () => {
+      const s = playing(cfgWith(['shield'], { spawnIntervalMin: 100, spawnIntervalMax: 100, healthCrate: { ...hc, chancePerSecond: 1000, maxChancePerSecond: 1000 } }));
+      s.players[0].hits = 2;
+      run(s, 300);
+      expect(s.powerUps).toHaveLength(0);
+    });
+
+    it('spawns near the player behind, nearer them than their opponent, once a round', () => {
+      const s = behind({ chancePerSecond: 1000, maxChancePerSecond: 1000, lifespan: 0.5 });
+      run(s, 1);
+      expect(s.powerUps).toHaveLength(1);
+      const crate = s.powerUps[0];
+      expect(crate.kind).toBe('healthCrate');
+      const d = dist(crate.pos, s.players[0].pos);
+      expect(d).toBeGreaterThanOrEqual(hc.minDistance - 1e-6);
+      expect(d).toBeLessThanOrEqual(hc.maxDistance + 1e-6);
+      expect(d).toBeLessThan(dist(crate.pos, s.players[1].pos));
+      // Once it expires, no second crate this round.
+      run(s, 120);
+      expect(s.powerUps).toHaveLength(0);
+    });
+
+    it('undoes one hit for whoever takes it, and does nothing at full health', () => {
+      const s = behind({ enabled: false });
+      s.players[0].hits = 2;
+      s.powerUps.push({ id: 900, kind: 'healthCrate', pos: { ...s.players[0].pos }, telegraph: 0, remaining: 5, lifespan: 5 });
+      step(s, [NO_INPUT, NO_INPUT]);
+      expect(s.players[0].hits).toBe(1);
+      expect(s.events).toContainEqual(expect.objectContaining({ type: 'healthCrate', player: 0, healed: true }));
+      // The other player, unhurt, just denies it.
+      s.powerUps.push({ id: 901, kind: 'healthCrate', pos: { ...s.players[1].pos }, telegraph: 0, remaining: 5, lifespan: 5 });
+      step(s, [NO_INPUT, NO_INPUT]);
+      expect(s.players[1].hits).toBe(0);
+      expect(s.powerUps).toHaveLength(0);
+      expect(s.events).toContainEqual(expect.objectContaining({ type: 'healthCrate', player: 1, healed: false }));
+    });
+
+    it('is never drawn from the power-up pool', () => {
+      expect(CONFIG.powerUps.pool as string[]).not.toContain('healthCrate');
     });
   });
 

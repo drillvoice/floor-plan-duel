@@ -76,9 +76,13 @@ export const POWER_UP_CATEGORY: Record<PowerUpKind, PowerUpCategory> = {
   bigTarget: 'curse',
 };
 
+// Anything that can be picked up: a power-up, or the health crate (which is
+// spawned by its own rule rather than from the pool).
+export type ItemKind = PowerUpKind | 'healthCrate';
+
 export interface PowerUp {
   id: number;
-  kind: PowerUpKind;
+  kind: ItemKind;
   pos: Vec2;
   telegraph: number; // seconds until it appears; can't be picked up before then
   remaining: number; // seconds left once it has appeared
@@ -150,7 +154,8 @@ export type GameEvent =
   | { type: 'roundEnd'; winner: PlayerIndex | null }
   | { type: 'matchEnd'; winner: PlayerIndex }
   | { type: 'suddenDeath' }
-  | { type: 'powerUpTelegraph'; kind: PowerUpKind; pos: Vec2 }
+  | { type: 'powerUpTelegraph'; kind: ItemKind; pos: Vec2 }
+  | { type: 'healthCrate'; player: PlayerIndex; pos: Vec2; healed: boolean } // picked up; healed = false at full health
   | { type: 'pickup'; player: PlayerIndex; kind: PowerUpKind; pos: Vec2 }
   | { type: 'powerUpExpired'; pos: Vec2 }
   | { type: 'effectEnded'; player: PlayerIndex; kind: PowerUpKind } // a timed power-up ran out
@@ -172,6 +177,7 @@ export interface GameState {
   lasers: Laser[];
   powerUps: PowerUp[];
   nextPowerUpIn: number;
+  cratesThisRound: number; // health crates spawned this round
   nextId: number;
   rng: number;
   lastRoundWinner: PlayerIndex | null; // null = draw

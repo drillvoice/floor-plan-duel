@@ -39,6 +39,8 @@ interface Callout {
 }
 
 const CALLOUT_LIFE = 1.4;
+const CRATE_COLOR = '#ffffff';
+const CRATE_CROSS = '#e8333a';
 const NEAR_MISS_GLOW = 0.3;
 // Seconds before a timed effect ends that its ring starts blinking.
 const EFFECT_BLINK = 0.75;
@@ -199,6 +201,15 @@ export class Renderer {
           }
           break;
         }
+        case 'healthCrate':
+          this.rings.push({ pos: e.pos, age: 0, color: CRATE_CROSS });
+          if (e.healed) {
+            this.callout(e.player, '+1 life!', CRATE_CROSS);
+            this.burst(state.players[e.player].pos, CRATE_COLOR, 12, 3);
+          } else {
+            this.callout(e.player, 'Denied!', CRATE_COLOR);
+          }
+          break;
         case 'suddenDeath':
           this.suddenDeathBanner = 2;
           break;
@@ -707,7 +718,8 @@ export class Renderer {
     const ctx = this.ctx;
     const c = this.toScreen(pu.pos);
     const r = state.cfg.powerUps.radius * this.view.scale;
-    const color = powerUpColor(pu.kind);
+    // The health crate is white with a red cross, apart from the power-up colours.
+    const color = pu.kind === 'healthCrate' ? CRATE_COLOR : powerUpColor(pu.kind);
     if (pu.telegraph > 0) {
       // Shimmering ring that tightens onto the spot before the item appears.
       const progress = 1 - pu.telegraph / state.cfg.powerUps.telegraph;
@@ -730,9 +742,19 @@ export class Renderer {
     ctx.fill();
     ctx.fillStyle = color;
     ctx.beginPath();
-    ctx.arc(c.x, c.y, r, 0, Math.PI * 2);
-    ctx.fill();
-    drawPowerUpGlyph(ctx, pu.kind, c.x, c.y, r * 1.2);
+    if (pu.kind === 'healthCrate') {
+      // A square crate with a red cross.
+      ctx.roundRect(c.x - r, c.y - r, r * 2, r * 2, r * 0.25);
+      ctx.fill();
+      ctx.fillStyle = CRATE_CROSS;
+      const arm = r * 0.28;
+      ctx.fillRect(c.x - arm, c.y - r * 0.7, arm * 2, r * 1.4);
+      ctx.fillRect(c.x - r * 0.7, c.y - arm, r * 1.4, arm * 2);
+    } else {
+      ctx.arc(c.x, c.y, r, 0, Math.PI * 2);
+      ctx.fill();
+      drawPowerUpGlyph(ctx, pu.kind, c.x, c.y, r * 1.2);
+    }
     // Lifespan ring shrinks as the item expires.
     const left = Math.max(0, pu.remaining / pu.lifespan);
     ctx.strokeStyle = hexAlpha(color, 0.9);

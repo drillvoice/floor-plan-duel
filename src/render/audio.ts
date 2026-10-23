@@ -80,6 +80,11 @@ export class Sound {
           if (POWER_UP_CATEGORY[e.kind] === 'curse') [587, 880].forEach((f, n) => this.tone(f, 0.09, 'triangle', 0.14, 1, n * 0.07));
           else [880, 587].forEach((f, n) => this.tone(f, 0.09, 'triangle', 0.12, 1, n * 0.07));
           break;
+        case 'healthCrate':
+          // A warm rising arpeggio for a heal; a flat thud for a denial.
+          if (e.healed) [392, 523, 659, 784].forEach((f, n) => this.tone(f, 0.16, 'sine', 0.2, 1, n * 0.07));
+          else this.tone(220, 0.15, 'triangle', 0.15, 0.8);
+          break;
         case 'powerUpTelegraph':
           this.tone(1200, 0.3, 'sine', 0.05, 1.3);
           break;

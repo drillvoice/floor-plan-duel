@@ -1,5 +1,6 @@
 import type { Config, ModifierId, PowerUpKind } from '../config';
 import type { Grid } from './grid';
+import type { PlayerStats } from './stats';
 import type { Vec2 } from './vec';
 
 export type PlayerIndex = 0 | 1;
@@ -105,7 +106,7 @@ export interface PlayerState {
   lastMove: Vec2; // unit vector of the last movement input; where a dodge goes when standing still
   hits: number; // hits taken this round
   roundWins: number;
-  nearMisses: number; // bullets that just missed this player, over the whole match
+  stats: PlayerStats; // over the whole match, for the results screen
   fireCooldown: number;
   dodgeCharges: number;
   dodgeCooldown: number; // time until the next charge comes back
@@ -145,7 +146,7 @@ export type GameEvent =
   | { type: 'fire'; player: PlayerIndex; pos: Vec2 }
   | { type: 'laserCharge'; player: PlayerIndex; from: Vec2; to: Vec2 }
   | { type: 'laserFire'; player: PlayerIndex; from: Vec2; to: Vec2; hit: boolean }
-  | { type: 'hit'; player: PlayerIndex; pos: Vec2; hits: number }
+  | { type: 'hit'; player: PlayerIndex; pos: Vec2; hits: number; range: number } // range: how far the shot travelled
   | { type: 'nearMiss'; player: PlayerIndex; pos: Vec2 }
   | { type: 'wallHit'; owner: PlayerIndex; pos: Vec2 }
   | { type: 'bounce'; owner: PlayerIndex; pos: Vec2 }

@@ -67,6 +67,15 @@ export const CONFIG = {
     margin: 0.4,
   },
 
+  // Awards on the results screen go to whoever did better at something, but
+  // only past these minimums, so one lucky shot isn't "Sharpshooter".
+  awards: {
+    minShots: 5, // for Sharpshooter and Spray and Pray
+    minClutchDodges: 3,
+    minPowerUps: 2,
+    minLongestHit: 6, // units
+  },
+
   dodge: {
     distance: 2.5,
     duration: 0.15,

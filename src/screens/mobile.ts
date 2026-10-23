@@ -158,6 +158,8 @@ export class MatchOverlay {
       return b;
     };
     const cb = this.callbacks;
+    // At the end of a match the buttons move to the bottom, below the stats.
+    this.actions.classList.toggle('over', mode === 'over');
     this.actions.replaceChildren(
       ...(mode === 'paused'
         ? [button('Resume ▶', cb.onResume, 'primary'), button('Quit', cb.onQuit)]

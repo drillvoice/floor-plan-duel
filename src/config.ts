@@ -186,6 +186,36 @@ export const CONFIG = {
     repathInterval: 0.25,
   },
 
+  // The first-person view (test version, opened with ?fp). Only the renderer
+  // and the camera read these; the rules never do.
+  firstPerson: {
+    // Horizontal field of view, in degrees.
+    fov: 70,
+    // Each view is drawn this many pixels wide, then scaled up unsmoothed for
+    // a chunky retro look. Its height follows the view's shape.
+    columns: 320,
+    // Heights above the floor, in units (a player is 1 unit across).
+    eyeHeight: 1.2,
+    wallHeight: 2.2,
+    playerHeight: 1.5,
+    // Bullets fly a little below eye level, so their floor shadows show.
+    bulletHeight: 0.85,
+    powerUpHeight: 0.55,
+    // Anything nearer the eye than this isn't drawn (a Ghost inside a wall).
+    near: 0.05,
+    // How quickly the camera turns to face the opponent: higher is snappier.
+    // Smoothing stops a dash past you from snapping the view round.
+    turnRate: 14,
+    // Spacing of the grid drawn on the floor and along walls, in units, so
+    // distance and movement are easy to read.
+    floorGrid: 2,
+    wallGrid: 1,
+    // Distance at which things fade fully into the fog. Dark maps fade much
+    // sooner: that's how far your own light reaches.
+    fogDistance: 34,
+    darkFogDistance: 6,
+  },
+
   map: {
     wallThickness: 0.3,
     defaultWidth: 24,

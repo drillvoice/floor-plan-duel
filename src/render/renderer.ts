@@ -6,10 +6,12 @@ import { POWER_UP_KINDS } from '../config';
 import { fireCooldownFor, hitRadiusFor, maxDodgeCharges, ON_OPPONENT, STACKING } from '../sim/powerups';
 import { dodgeDirection } from '../sim/step';
 import type { Arena, GameEvent, GameState, Laser, PlayerIndex, PowerUp, PowerUpKind } from '../sim/types';
-import { add, closestPointOnSegment, dist, distPointSegment, scale, type Vec2 } from '../sim/vec';
+import { add, closestPointOnSegment, dist, distPointSegment, dot, rightOf, scale, type Vec2 } from '../sim/vec';
 import { drawHud } from './hud';
 import { CATEGORY_COLORS, drawPowerUpGlyph, powerUpColor } from './icons';
-import { arenaLayout, toScreen, type MatchView } from './layout';
+import type { FirstPersonCamera } from './firstPerson/camera';
+import { FirstPersonView } from './firstPerson/view';
+import { arenaLayout, COMPACT_HUD, toScreen, type MatchView } from './layout';
 import { drawLook } from './looks';
 import { drawOverlay, drawSuddenDeathBanner } from './overlay';
 import { COLORS, hexAlpha, NEAR_MISS_COLOR } from './theme';
@@ -119,6 +121,10 @@ export class Renderer {
   pausedHint = 'Esc to resume · Q to quit to title';
   // Phone-only play: slim HUD, arena as big as the screen allows.
   compact = false;
+  // The first-person test view (?fp): whose eyes to draw (side by side when
+  // two people play) and each player's camera. Null draws from above.
+  firstPerson: { views: PlayerIndex[]; cameras: readonly [FirstPersonCamera, FirstPersonCamera] } | null = null;
+  private fpViews = [new FirstPersonView(), new FirstPersonView()];
 
   constructor(private canvas: HTMLCanvasElement) {
     this.ctx = canvas.getContext('2d')!;
@@ -300,6 +306,10 @@ export class Renderer {
   }
 
   drawMatch(state: GameState, paused: boolean): void {
+    if (this.firstPerson) {
+      this.drawFirstPerson(state, paused, this.firstPerson.views, this.firstPerson.cameras);
+      return;
+    }
     const ctx = this.ctx;
     this.layout(state);
     ctx.fillStyle = COLORS.background;
@@ -327,6 +337,96 @@ export class Renderer {
     drawHud(ctx, this.view, state);
     drawSuddenDeathBanner(ctx, this.view, state, this.suddenDeathBanner);
     drawOverlay(ctx, this.view, state, paused, { paused: this.pausedHint, matchOver: this.matchOverHint });
+  }
+
+  // One or two first-person views under the slim HUD, with the usual
+  // countdown, pause and results overlays over the whole screen.
+  private drawFirstPerson(state: GameState, paused: boolean, views: PlayerIndex[], cameras: readonly [FirstPersonCamera, FirstPersonCamera]): void {
+    const ctx = this.ctx;
+    const { width, height, looks, names } = this;
+    const top = COMPACT_HUD + 4;
+    // The slim HUD's timer bar runs along the top of the views.
+    this.view = { scale: width / state.arena.width, origin: { x: 0, y: top }, sideW: 0, width, height, compact: true, looks, names };
+    ctx.fillStyle = COLORS.background;
+    ctx.fillRect(0, 0, width, height);
+    const gap = 4;
+    const viewW = (width - gap * (views.length - 1)) / views.length;
+    views.forEach((player, k) => {
+      const rect = { x: k * (viewW + gap), y: top, width: viewW, height: height - top };
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(rect.x, rect.y, rect.width, rect.height);
+      ctx.clip();
+      if (this.shake > 0) {
+        const mag = this.shake * this.shake * 10;
+        ctx.translate((Math.random() * 2 - 1) * mag, (Math.random() * 2 - 1) * mag);
+      }
+      this.fpViews[k].draw(ctx, rect, state, player, cameras[player], looks);
+      ctx.restore();
+      this.drawFirstPersonHud(state, player, rect, cameras[player]);
+    });
+    if (this.screenFlash > 0) {
+      ctx.fillStyle = `rgba(255,255,255,${this.screenFlash * 0.8})`;
+      ctx.fillRect(0, 0, width, height);
+    }
+    drawHud(ctx, this.view, state);
+    drawSuddenDeathBanner(ctx, this.view, state, this.suddenDeathBanner);
+    drawOverlay(ctx, this.view, state, paused, { paused: this.pausedHint, matchOver: this.matchOverHint });
+  }
+
+  // What a first-person player needs to know about themselves: whose view it
+  // is, a red flash when hit, and their dodge, with an arrow showing which way
+  // it would go (up is straight ahead).
+  private drawFirstPersonHud(state: GameState, player: PlayerIndex, rect: { x: number; y: number; width: number; height: number }, cam: FirstPersonCamera): void {
+    const ctx = this.ctx;
+    const p = state.players[player];
+    const color = COLORS.players[player];
+    if (this.hitFlash[player] > 0) {
+      ctx.fillStyle = `rgba(255,40,40,${(this.hitFlash[player] / 0.18) * 0.35})`;
+      ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
+    }
+    ctx.fillStyle = color;
+    ctx.fillRect(rect.x, rect.y, rect.width, 3);
+    // The name on a dark tab, so it reads over pale walls.
+    ctx.font = '700 13px system-ui, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    const nameW = ctx.measureText(this.names[player]).width;
+    ctx.fillStyle = 'rgba(10,12,18,0.7)';
+    ctx.beginPath();
+    ctx.roundRect(rect.x, rect.y + 3, nameW + 20, 22, [0, 0, 8, 0]);
+    ctx.fill();
+    ctx.fillStyle = color;
+    ctx.fillText(this.names[player], rect.x + 10, rect.y + 14);
+
+    const cx = rect.x + rect.width / 2;
+    const cy = rect.y + rect.height - 34;
+    const ready = p.dodgeCharges > 0;
+    const d = dodgeDirection(p);
+    // The dodge direction relative to the camera: x to the right, y ahead.
+    const side = dot(d, rightOf(cam.forward));
+    const ahead = dot(d, cam.forward);
+    const angle = Math.atan2(side, ahead);
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(angle);
+    ctx.strokeStyle = hexAlpha(color, ready ? 0.95 : 0.25);
+    ctx.lineWidth = 3;
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(-9, -2);
+    ctx.lineTo(0, -12);
+    ctx.lineTo(9, -2);
+    ctx.stroke();
+    ctx.restore();
+    const charges = maxDodgeCharges(p.effects);
+    for (let n = 0; n < charges; n++) {
+      ctx.fillStyle = hexAlpha(color, n < p.dodgeCharges ? 0.95 : 0.25);
+      ctx.beginPath();
+      ctx.arc(cx - (charges - 1) * 6 + n * 12, cy + 14, 4, 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
 
   private drawArena(state: GameState): void {

@@ -2,6 +2,7 @@ import { BotPlayer } from './bot/bot';
 import { emptyTouchState, TouchPlayer } from './input/touch';
 import { CONFIG, KEY_BINDINGS } from './config';
 import { Keyboard, KeyboardPlayer } from './input/keyboard';
+import { cameraRelative } from './input/relative';
 import type { InputSource } from './input/types';
 import { lastEditedMap, listSavedMaps } from './maps/storage';
 import { PhoneHost } from './net/host';
@@ -10,6 +11,7 @@ import { BUILT_IN_MAPS, copyOfBuiltIn } from './maps/builtin';
 import { Sound } from './render/audio';
 import { cycleLook, loadLooks, saveLooks } from './render/looks';
 import { Music } from './render/music';
+import { FirstPersonCamera } from './render/firstPerson/camera';
 import { modifierReel } from './render/overlay';
 import { Renderer } from './render/renderer';
 import { COLORS } from './render/theme';
@@ -20,7 +22,7 @@ import { PhoneLobby } from './screens/phones';
 import { Settings, type Slot } from './settings';
 import { shuffled } from './sim/rng';
 import { createGame, step } from './sim/step';
-import type { GameState, MapData } from './sim/types';
+import type { GameState, MapData, PlayerIndex, PlayerInput } from './sim/types';
 
 type MatchFrom = 'title' | 'editor' | 'hotseat' | 'phones' | 'mobile';
 type Screen =
@@ -62,6 +64,22 @@ const phones = new PhoneHost(clock);
 const phonePlayer = new PhonePlayer(phones.room, clock);
 
 let inputs: [InputSource, InputSource] = makeInputs(0);
+
+// The first-person test view, opened with ?fp. People see through their own
+// eyes, side by side when two play, and their keys turn with their camera.
+// With only bots playing, it follows P1.
+const firstPerson = new URLSearchParams(location.search).has('fp');
+const cameras = [new FirstPersonCamera(), new FirstPersonCamera()] as const;
+
+function firstPersonViews(): PlayerIndex[] {
+  const people = ([0, 1] as const).filter((i) => inputs[i].kind === 'human');
+  return people.length ? people : [0];
+}
+
+function sampleInput(state: GameState, i: PlayerIndex): PlayerInput {
+  const input = inputs[i].sample(state, i);
+  return renderer.firstPerson && inputs[i].kind === 'human' ? cameraRelative(input, cameras[i].forward) : input;
+}
 
 function makeInputs(seed: number): [InputSource, InputSource] {
   const make = (slot: Slot, i: 0 | 1): InputSource =>
@@ -305,6 +323,7 @@ function startMatch(map: MapData, from: MatchFrom = 'title', hotseat?: HotseatMa
     renderer.matchOverHint = 'Enter for a rematch · Esc for title';
   }
   renderer.compact = from === 'mobile';
+  renderer.firstPerson = firstPerson ? { views: firstPersonViews(), cameras } : null;
   renderer.pausedHint = from === 'mobile' ? '' : 'Esc to resume · Q to quit to title';
   screen = { kind: 'match', state: createGame(matchMaps(map, from, seed), seed, cfg), map, paused: false, from, recorded: false };
   keyboard.clear();
@@ -429,6 +448,7 @@ function frame(now: number): void {
   } else {
     const match = screen;
     music.setPaused(match.paused);
+    if (renderer.firstPerson) for (const i of [0, 1] as const) cameras[i].update(match.state, i, elapsed);
     if (!match.paused && hitstop > 0) {
       hitstop = Math.max(0, hitstop - elapsed);
     } else if (!match.paused) {
@@ -437,7 +457,7 @@ function frame(now: number): void {
       while (accumulator >= TICK) {
         accumulator -= TICK;
         const s = match.state;
-        step(s, [inputs[0].sample(s, 0), inputs[1].sample(s, 1)]);
+        step(s, [sampleInput(s, 0), sampleInput(s, 1)]);
         renderer.handleEvents(s.events, s);
         for (const e of s.events) {
           if (e.type === 'hit' && inputs[e.player] === phonePlayer) {

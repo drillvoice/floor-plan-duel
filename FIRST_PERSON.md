@@ -1,6 +1,6 @@
 # First-person mode: plan
 
-Oct 23, 2026 · draft for discussion
+Oct 23, 2026 · decisions settled, ready for the test version
 
 A view option, not a new game. The same match, maps, bot, power-ups and rules, drawn Wolfenstein-style from each shooter's eyes instead of from above. DESIGN.md lists it under v3 ("maybe a first-person mode rendered from the same walls"); this is the plan for building it.
 
@@ -8,20 +8,20 @@ A view option, not a new game. The same match, maps, bot, power-ups and rules, d
 
 The foundation makes this unusually cheap, because almost nothing below the renderer has to change:
 
-- **The sim stays exactly as it is.** First person is a way of drawing `GameState` and a way of turning keys into a `PlayerInput`. Matches stay reproducible, the bot and the balance sim keep working, and a first-person player can face a top-down player, a bot or a phone.
+- **The sim stays exactly as it is.** First person is a way of drawing `GameState` and a way of turning keys into a `PlayerInput`. Matches stay reproducible, the bot and the balance sim keep working, and a first-person player can face a bot or a phone.
 - **Auto-aim is a gift here.** The hard part of a shooter in first person is aiming, and this game doesn't have any. You still only move, dodge and shoot, which suits a shared keyboard with no mouse.
 - **The camera locks onto your opponent.** The sim already keeps `PlayerState.facing` as a unit vector toward the opponent, so the camera looks along it. Nobody needs turn keys: W walks toward your opponent, S backs off, and A and D strafe, which circles them, the natural way to dodge. The four movement keys stay the same as today.
 - **Walls come from the arena.** `Arena.walls` (outer boundary included) is already a list of segments with a known thickness (`map.wallThickness`), so every map, built-in or drawn in the editor, works in first person with no extra data.
 
-## Design choices (with recommendations)
+## Design choices
 
-These are the calls that change what gets built. Recommendations first.
+These are the calls that change what gets built. 1, 2 and 5 were settled on Oct 23; 3 and 4 are recommendations to confirm in the test version.
 
-1. **Camera: lock-on (recommended) or free turning.** Lock-on keeps the controls and the "you only dodge" pillar, and you always see the bullets coming. Free turning (turn keys, or Q/E) gives hide-and-seek and peeking round corners, but needs two more keys per player on a keyboard that already ghosts, and bullets from behind become unreadable. Start with lock-on; try a "turn to face" variant later if lock-on feels like being on rails.
+1. **Camera: lock-on (decided).** Lock-on keeps the controls and the "you only dodge" pillar, and you always see the bullets coming. Free turning (turn keys, or Q/E) gives hide-and-seek and peeking round corners, but needs two more keys per player on a keyboard that already ghosts, and bullets from behind become unreadable. Lock-on it is for now; it may be tricky when players are close (see Risks), and a "turn to face" variant is the thing to try if it feels like being on rails.
 2. **Two players on one laptop: split screen, side by side (recommended).** Left half is P1's view, right half P2's, matching which side of the keyboard they're on. Against a bot, on phone play, or with one side on a phone, the human gets the full screen. Screen-peeking is part of the charm, as in GoldenEye.
 3. **Look: chunky retro (recommended) or smooth.** Rendering each view at a low internal resolution (around 320 columns) and scaling it up with smoothing off looks deliberately Wolfenstein, runs fast on old laptops and phones, and hides how simple the art is. Flat-shaded walls with a faint grid, flat floor and ceiling, emoji looks on billboard sprites.
 4. **Rules: unchanged at first.** Judging a bullet's distance head-on is harder than seeing it from above, so first-person dodging may be harder. Don't guess: playtest with the default rules, and only if it's clearly too hard, add first-person rule tweaks as a config copy applied at match start, the same way round modifiers work (`sim/modifiers.ts`). Never special cases in `step`.
-5. **Mixed views: later, as an option.** One player in first person, the other top-down, is an interesting handicap ("the expert plays blind"). Free once the per-player view setting exists, so it can come at the end.
+5. **No mixed views (decided).** Both players see the same kind of view, so the view is one setting for the match, not one per player.
 
 ## What makes dodging readable in first person
 
@@ -30,7 +30,7 @@ Dodging is the skill, so the view has to make incoming bullets easy to judge. Ea
 - **Floor shadows** under every bullet. The shadow's position on the floor says how far away it is far better than the bullet's size does.
 - **A projected floor grid** (lines every 2 units), so distance and your own movement are easy to read, and the walls get a faint grid along their length for the same reason.
 - **Bullets at chest height, slightly below eye level**, with a short trail, glowing in the shooter's colour.
-- **A minimap** in the corner of each view: the existing top-down renderer drawn small. It also shows power-ups out of sight.
+- **A minimap** in the corner of each view: the existing top-down renderer drawn small. It shows walls, bullets and power-ups, but your opponent only while you have line of sight to them (`PlayerState.lineOfSight`), so walls stay real cover.
 - **Edge arrows** for threats outside the field of view: Bouncer shots off a wall, a bullet from a ghosting opponent.
 - **The laser's lock-on line** drawn as a dotted beam in 3D, so you see the lane you must leave.
 
@@ -49,9 +49,9 @@ New code, kept apart from the top-down renderer:
 
 Changes to existing code:
 
-- `src/settings.ts`: a per-player view, `'topDown' | 'firstPerson'`, saved as `fpd.view`.
+- `src/settings.ts`: the match's view, `'topDown' | 'firstPerson'`, saved as `fpd.view`.
 - `src/game.ts`: when a match starts, wrap first-person players' inputs in the relative input (keyboard, touch and phone alike, never the bot) and pick the renderer. The loop otherwise stays as it is.
-- Title screen (`render/title.ts`): **V** cycles the view (Top-down, First person, and later Mixed). The phone menu (`screens/mobile.ts`) gets the same choice; the phone's joystick works unchanged, up meaning forward.
+- Title screen (`render/title.ts`): **V** switches the view between Top-down and First person. The phone menu (`screens/mobile.ts`) gets the same choice; the phone's joystick works unchanged, up meaning forward.
 - `src/config.ts`: a `firstPerson` section with every number the view uses, each with a comment: field of view, eye height, wall height, bullet height, sprite sizes, internal resolution, camera smoothing, bob, fog distance on dark maps, minimap size.
 - Sound stays as it is. Stereo panning per listener is pointless with two players and one pair of speakers.
 
@@ -75,7 +75,7 @@ Each step ends with something playable, and the first one decides whether the re
 3. **Split screen and HUD.** Two views side by side, each with its player's hits, dodge charge and direction, power-up icons with timers, the "blocked" indicator and a small round and score bar shared across the top. Countdown, modifier reel, pause and results reuse the existing overlay over the whole screen.
 4. **Juice.** Muzzle flash, hit flash and shake per view, a quick field-of-view kick on dodges, head bob, near-miss "Close!" callouts, slow motion on knockouts (already driven by the game loop).
 5. **Maps and power-up touches.** Dark maps, paint splats on walls, Ghost, Big Target and the effect rings, so every map and power-up looks right.
-6. **Settings and phones.** The **V** toggle and `fpd.view`, the phone-menu option, phone controllers and hotseat working in first person. Then the Mixed option, if it's wanted.
+6. **Settings and phones.** The **V** toggle and `fpd.view`, the phone-menu option, phone controllers and hotseat working in first person.
 7. **Playtest and tune.** Humans only can judge this; the bot sees the state, not the screen. If dodging is too hard, try in this order: a wider field of view, lower bullet height, then the first-person rule tweaks from choice 4, checked with `npm run sim` against the usual targets.
 8. **Docs.** README (how to switch view, what's different) and DESIGN.md's roadmap.
 
@@ -91,5 +91,5 @@ Each step ends with something playable, and the first one decides whether the re
 - **Readability is the whole bet.** If a bullet coming straight at you can't be judged, first person is a curiosity rather than a mode. Hence the spike first.
 - **Lock-on camera swing.** When players are close and circling, the camera turns fast, which can feel sickening. Smoothing helps, but too much makes your strafing feel wrong because "forward" lags. Tune `firstPerson.cameraSmoothing` in playtests, and rotate the input by the smoothed camera angle, so the keys always match what's on screen.
 - **Split screen halves the width** on a laptop, so each view is narrow and tall. A slightly wider field of view in split screen (around 75° instead of 66°) may suit it.
-- **Lines of sight look different.** From above you always see your opponent; in first person a wall hides them. That's arguably more fun (walls really are cover), but the minimap decides how much is hidden. Worth deciding whether the minimap shows the opponent always, only with line of sight, or never.
+- **Lines of sight look different.** From above you always see your opponent; in first person a wall hides them. That's arguably more fun (walls really are cover). Decided: the minimap shows the opponent only with line of sight. Watch in playtests whether losing them behind a wall is exciting or just confusing.
 - **Phones:** raycasting at 320 columns is fine, but sprite drawing with emoji can be slow on older phones; cache each look as a small bitmap.

@@ -57,6 +57,8 @@ Power-ups flash a ring where they're about to appear, and a ring around each one
 
 A label pops up saying what each one did, and the icons under each player's health show what's active. Each blue or red effect also puts a ring of its colour round the player that drains as it wears off and blinks just before it ends, with a little blip when it's over.
 
+**Health crate:** a white crate with a red cross that gives back one life (never more than you started with). It's a comeback item: it only turns up for a player who is behind on rounds and has taken a hit this round, near them, and more often the further behind they are. Either player can grab it, so the leader can rush over to deny it.
+
 ## Round modifiers
 
 With modifiers on, a slot-machine reel spins before each round and picks a rule for that round only, never the same one twice in a row:
@@ -124,7 +126,7 @@ The status line at the bottom warns if a spawn overlaps a wall or the spawns can
 npm run sim -- --matches 500 --difficulty normal --seed 1
 ```
 
-Runs bot-vs-bot matches headlessly, much faster than real time, and prints win rates by slot and spawn, round length, hits, shots and dodges per round (and laser zaps, with how often they hit), and how often each power-up's picker goes on to win the round, checked against the targets in DESIGN.md.
+Runs bot-vs-bot matches headlessly, much faster than real time, and prints win rates by slot and spawn, round length, hits, shots and dodges per round (and laser zaps, with how often they hit), rounds per match, how often the player behind on rounds comes back, health crates, and how often each power-up's picker goes on to win the round, checked against the targets in DESIGN.md.
 
 - `--p1 hard --p2 easy` sets each bot separately.
 - `--set path=value` tries a config change without editing any files, and can be repeated: `--set round.hitsToLose=5 --set fire.cooldown=0.9`.

@@ -133,6 +133,22 @@ export const CONFIG = {
     topsyTurvy: { duration: 3 },
     // Opponent is easier to hit; walls still treat them as normal size.
     bigTarget: { sizeMultiplier: 1.5, duration: 5 },
+    // Health crate: a comeback item, outside the pool above. Taking it undoes
+    // one hit (never past full health). It only spawns for a player who is
+    // behind on rounds, has taken a hit this round and isn't ahead on hits this
+    // round, so never in a tied match. The chance each second is
+    // `chancePerSecond` × rounds behind × hits taken, up to
+    // `maxChancePerSecond`. It appears `minDistance`–`maxDistance` units from
+    // that player, nearer them than their opponent, but either player can take it.
+    healthCrate: {
+      enabled: true,
+      chancePerSecond: 0.06,
+      maxChancePerSecond: 0.3,
+      maxPerRound: 1,
+      minDistance: 3,
+      maxDistance: 7,
+      lifespan: 10,
+    },
   },
 
   // Round modifiers: before each round a spin picks a one-round rule. Off by

@@ -111,6 +111,20 @@ describe('phone room', () => {
     expect(room.slotOf('a')).toBeNull();
   });
 
+  it('seats a new phone on an empty side before one held for a dropped phone', () => {
+    const room = new PhoneRoom();
+    room.receive(pad('a'), 0);
+    room.disconnect('a'); // a's screen locked
+    room.receive(pad('b'), 1);
+    expect(room.slotOf('b')).toBe(1);
+    room.receive(pad('a', { seq: 2 }), 2);
+    expect(room.slotOf('a')).toBe(0);
+    // With no empty side left, a new phone takes a dropped phone's side.
+    room.disconnect('a');
+    room.receive(pad('c'), 3);
+    expect(room.slotOf('c')).toBe(0);
+  });
+
   it('turns stick and button counters into game input, each press once', () => {
     const room = new PhoneRoom();
     room.receive(pad('a'), 0);

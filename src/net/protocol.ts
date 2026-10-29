@@ -5,8 +5,9 @@
 // Messages travel over an unreliable channel, so each one is a full snapshot
 // of the sender's state rather than a change. A lost message doesn't matter:
 // the next one, a few milliseconds later, says the same thing. One-off
-// actions (a dodge tap, the start button) are counters that only go up, so
-// the receiver can tell a new press from one it has already seen.
+// actions (a dodge tap, the pause button) are counters that only go up, so
+// the receiver can tell a new press from one it has already seen. Being
+// ready to start is a state rather than a press, so it's just a flag.
 
 import type { InputSource } from '../input/types';
 import type { PlayerIndex, PlayerInput } from '../sim/types';
@@ -50,8 +51,8 @@ export interface PadMessage {
   shoot: boolean; // held
   shots: number; // counters: each press adds one
   dodges: number;
-  starts: number;
   pauses: number;
+  ready: boolean; // ready for the match to start (the phone clears it once one does)
 }
 
 export type HostScreen = 'lobby' | 'match' | 'paused' | 'over';
@@ -63,7 +64,9 @@ export interface HostMessage {
   colors: [string, string]; // each side's player colour
   taken: [string | null, string | null]; // name of whoever holds each side
   screen: HostScreen;
-  canStart: boolean; // whether the start button does anything right now
+  canStart: boolean; // whether the Ready button does anything right now
+  ready: [boolean, boolean]; // whether each side's phone is ready
+  countdown: number | null; // seconds until the match starts, once every phone is ready
   buzz: number; // counter: goes up each time this phone's player is hit
 }
 
@@ -85,7 +88,7 @@ export function parsePad(data: unknown): PadMessage | null {
   if (typeof d.name !== 'string' || typeof d.look !== 'string' || d.look.length > 16) return null;
   if (!(d.want === null || d.want === 0 || d.want === 1)) return null;
   if (!isAxis(d.x) || !isAxis(d.y) || typeof d.shoot !== 'boolean') return null;
-  if (!isCount(d.shots) || !isCount(d.dodges) || !isCount(d.starts) || !isCount(d.pauses)) return null;
+  if (!isCount(d.shots) || !isCount(d.dodges) || !isCount(d.pauses) || typeof d.ready !== 'boolean') return null;
   const clamp = (v: number) => Math.max(-1, Math.min(1, v));
   return {
     t: 'pad',
@@ -100,8 +103,8 @@ export function parsePad(data: unknown): PadMessage | null {
     shoot: d.shoot,
     shots: d.shots,
     dodges: d.dodges,
-    starts: d.starts,
     pauses: d.pauses,
+    ready: d.ready,
   };
 }
 
@@ -114,6 +117,8 @@ export function parseHost(data: unknown): HostMessage | null {
   if (!d.taken.every((n) => n === null || typeof n === 'string')) return null;
   if (!['lobby', 'match', 'paused', 'over'].includes(d.screen as string)) return null;
   if (typeof d.canStart !== 'boolean' || !isCount(d.buzz)) return null;
+  if (!Array.isArray(d.ready) || d.ready.length !== 2 || !d.ready.every((r) => typeof r === 'boolean')) return null;
+  if (!(d.countdown === null || (typeof d.countdown === 'number' && d.countdown >= 0))) return null;
   return d as unknown as HostMessage;
 }
 
@@ -127,12 +132,11 @@ interface Phone {
   heardAt: number; // seconds, host clock
   usedShots: number; // presses the game has already acted on
   usedDodges: number;
-  seenStarts: number;
   seenPauses: number;
   buzz: number;
 }
 
-export type RoomEvent = { type: 'start' } | { type: 'pause' } | { type: 'dropped'; slot: PlayerIndex };
+export type RoomEvent = { type: 'pause' } | { type: 'dropped'; slot: PlayerIndex };
 
 // The host's view of the phones: who's connected and which slot each holds.
 // Slots belong to a phone's id, not its connection, so a phone that drops
@@ -155,16 +159,13 @@ export class PhoneRoom {
         heardAt: now,
         usedShots: pad.shots,
         usedDodges: pad.dodges,
-        seenStarts: pad.starts,
         seenPauses: pad.pauses,
         buzz: known?.buzz ?? 0,
       });
     } else {
       // Messages can arrive out of order: ignore one older than what we have.
       if (pad.seq <= known.pad.seq) return events;
-      if (pad.starts > known.seenStarts) events.push({ type: 'start' });
       if (pad.pauses > known.seenPauses) events.push({ type: 'pause' });
-      known.seenStarts = pad.starts;
       known.seenPauses = pad.pauses;
       known.pad = pad;
       known.connected = true;
@@ -219,6 +220,26 @@ export class PhoneRoom {
     return id !== null && !this.phones.get(id)?.connected;
   }
 
+  // Whether both sides are played from phones (counting one that's
+  // reconnecting). Then the match only starts when both are ready, so
+  // neither player can start it on their own.
+  phonesOnBothSides(): boolean {
+    return ([0, 1] as const).every((i) => this.phoneIn(i) !== null || this.isWaitingFor(i));
+  }
+
+  isReady(slot: PlayerIndex): boolean {
+    const id = this.slots[slot];
+    const phone = id === null ? undefined : this.phones.get(id);
+    return !!phone?.connected && phone.pad.ready;
+  }
+
+  // Whether there's a phone on a side and every phone on a side is ready.
+  // A phone that's reconnecting counts as not ready.
+  everyoneReady(): boolean {
+    const sides = ([0, 1] as const).filter((i) => this.phoneIn(i) !== null || this.isWaitingFor(i));
+    return sides.length > 0 && sides.every((i) => this.isReady(i));
+  }
+
   // Free a slot held by a phone that left, so the keyboard or a bot plays it.
   release(slot: PlayerIndex): void {
     if (this.isWaitingFor(slot)) this.slots[slot] = null;
@@ -231,7 +252,7 @@ export class PhoneRoom {
   }
 
   // What the host tells a phone.
-  messageFor(id: string, screen: HostScreen, canStart: boolean, colors: readonly [string, string]): HostMessage {
+  messageFor(id: string, screen: HostScreen, canStart: boolean, colors: readonly [string, string], countdown: number | null): HostMessage {
     const slot = this.slotOf(id);
     const taken = ([0, 1] as const).map((i) => this.phoneIn(i)?.name ?? null) as [string | null, string | null];
     return {
@@ -241,6 +262,8 @@ export class PhoneRoom {
       taken,
       screen,
       canStart,
+      ready: [this.isReady(0), this.isReady(1)],
+      countdown,
       buzz: this.phones.get(id)?.buzz ?? 0,
     };
   }
@@ -262,6 +285,32 @@ export class PhoneRoom {
       // A tap counts even if press and release both landed between ticks.
       shoot: (fresh && pad.shoot) || tapped,
     };
+  }
+}
+
+// The few seconds between everyone being ready and the match starting, so
+// nobody is caught looking away. It starts over if anyone stops being ready.
+export class StartCountdown {
+  private since: number | null = null;
+
+  constructor(private length: number) {}
+
+  // Called every frame with whether everyone is ready. True on the frame
+  // the countdown runs out, when the match should start.
+  update(allReady: boolean, now: number): boolean {
+    if (!allReady) {
+      this.since = null;
+      return false;
+    }
+    this.since ??= now;
+    if (now - this.since < this.length) return false;
+    this.since = null;
+    return true;
+  }
+
+  // Seconds until the start, or null when not counting down.
+  left(now: number): number | null {
+    return this.since === null ? null : Math.max(0, this.length - (now - this.since));
   }
 }
 

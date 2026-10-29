@@ -1,12 +1,12 @@
 import { BotPlayer } from './bot/bot';
 import { emptyTouchState, TouchPlayer } from './input/touch';
-import { CONFIG, KEY_BINDINGS } from './config';
+import { CONFIG, KEY_BINDINGS, PHONE_LOBBY } from './config';
 import { Keyboard, KeyboardPlayer } from './input/keyboard';
 import { cameraRelative } from './input/relative';
 import type { InputSource } from './input/types';
 import { lastEditedMap, listSavedMaps } from './maps/storage';
 import { PhoneHost } from './net/host';
-import { PhonePlayer, type HostScreen } from './net/protocol';
+import { PhonePlayer, StartCountdown, type HostScreen } from './net/protocol';
 import { BUILT_IN_MAPS, copyOfBuiltIn } from './maps/builtin';
 import { Sound } from './render/audio';
 import { cycleLook, loadLooks, saveLooks } from './render/looks';
@@ -18,7 +18,7 @@ import { COLORS } from './render/theme';
 import { Editor } from './screens/editor';
 import { HotseatLobby } from './screens/hotseat';
 import { MatchOverlay, MobileMenu, prefersTouch, type OverlayMode } from './screens/mobile';
-import { PhoneLobby } from './screens/phones';
+import { PhoneLobby, ReadyBanner } from './screens/phones';
 import { Settings, type Slot } from './settings';
 import { shuffled } from './sim/rng';
 import { createGame, step } from './sim/step';
@@ -62,6 +62,10 @@ const slots = settings.slots;
 const clock = () => performance.now() / 1000;
 const phones = new PhoneHost(clock);
 const phonePlayer = new PhonePlayer(phones.room, clock);
+// Phones start a match by all tapping Ready, then a short countdown.
+const startCountdown = new StartCountdown(PHONE_LOBBY.readyCountdown);
+const readyBanner = new ReadyBanner();
+let lastCountShown: number | null = null;
 
 let inputs: [InputSource, InputSource] = makeInputs(0);
 
@@ -144,6 +148,8 @@ const lobby = new HotseatLobby({
 
 const phoneLobby = new PhoneLobby(phones, {
   onStart: () => {
+    // With a phone on each side, only their Ready buttons start the match.
+    if (phones.room.phonesOnBothSides()) return;
     phoneLobby.close();
     startMatch(selectedMap(), 'phones');
   },
@@ -153,6 +159,7 @@ const phoneLobby = new PhoneLobby(phones, {
   },
   fallback: (i) => (slots[i] === 'human' ? 'Human (keyboard)' : `Bot · ${slots[i][0].toUpperCase()}${slots[i].slice(1)}`),
   colors: COLORS.players,
+  countdown: () => startCountdown.left(clock()),
 });
 
 function openPhoneLobby(): void {
@@ -255,20 +262,42 @@ canvas.addEventListener('pointerdown', (e) => {
 // One-off actions from the phones.
 phones.onEvent = (e) => {
   sound.unlock();
-  if (e.type === 'start') {
-    if (screen.kind === 'title') startMatch(selectedMap(), 'phones');
-    else if (screen.kind === 'phones') {
-      phoneLobby.close();
-      startMatch(selectedMap(), 'phones');
-    } else if (screen.kind === 'match' && screen.state.phase === 'matchOver' && screen.from !== 'hotseat') {
-      startMatch(screen.map, screen.from === 'title' ? 'phones' : screen.from);
-    }
-  } else if (screen.kind === 'match' && screen.state.phase !== 'matchOver') {
+  if (screen.kind === 'match' && screen.state.phase !== 'matchOver') {
     // A pause button, or a phone dropping out mid-match: pause until it's back.
     if (e.type === 'pause') screen.paused = !screen.paused;
     else if (inputs[e.slot] === phonePlayer) screen.paused = true;
   }
 };
+
+// Every phone is ready and the countdown has run out. Only called while
+// phonesCanStart() says the phones may start a match.
+function startFromPhones(): void {
+  sound.unlock();
+  if (screen.kind === 'phones') phoneLobby.close();
+  if (screen.kind === 'match') startMatch(screen.map, screen.from === 'title' ? 'phones' : screen.from);
+  else startMatch(selectedMap(), 'phones');
+}
+
+// Keeps the phones' ready-up and countdown going, and shows it on the big
+// screen. Returns the seconds left in the countdown, if there is one.
+function updateReadyUp(): number | null {
+  const canStart = phonesCanStart();
+  if (startCountdown.update(canStart && phones.room.everyoneReady(), clock())) startFromPhones();
+  const left = startCountdown.left(clock());
+  const count = left === null ? null : Math.max(1, Math.ceil(left));
+  if (count !== null && count !== lastCountShown) sound.tick(count);
+  lastCountShown = count;
+  // The phone screen shows this itself; the title and results screens get a banner.
+  const banner = screen.kind === 'title' || (screen.kind === 'match' && screen.state.phase === 'matchOver');
+  if (!banner || !phonesCanStart()) readyBanner.show(null, null);
+  else if (count !== null) readyBanner.show('Get ready!', count);
+  else if (phones.room.phonesOnBothSides()) {
+    const names = sideNames();
+    const who = ([0, 1] as const).map((i) => `${names[i]} ${phones.room.isReady(i) ? '✓' : '…'}`).join('   ');
+    readyBanner.show(`${who}   ·   Tap Ready on both phones`, null);
+  } else readyBanner.show(null, null);
+  return left;
+}
 
 // What the phones should show, and whether their start button works.
 function hostScreen(): HostScreen {
@@ -356,7 +385,10 @@ keyboard.onPress((code) => {
   }
   if (screen.kind === 'editor' || screen.kind === 'hotseat' || screen.kind === 'phones' || screen.kind === 'mobile') return; // they handle their own keys
   if (screen.kind === 'title') {
-    if (code === 'Enter' || code === 'Space') startMatch(selectedMap());
+    if (code === 'Enter' || code === 'Space') {
+      // With a phone on each side, only their Ready buttons start the match.
+      if (!phones.room.phonesOnBothSides()) startMatch(selectedMap());
+    }
     else if (code === 'Digit1') settings.cycleSlot(0);
     else if (code === 'Digit2') settings.cycleSlot(1);
     else if (code === KEY_BINDINGS.p1.dodge || code === KEY_BINDINGS.p2.dodge) {
@@ -382,7 +414,9 @@ keyboard.onPress((code) => {
   if (match.state.phase === 'matchOver') {
     if (match.from === 'hotseat') {
       if (code === 'Enter' || code === KEY_BINDINGS.pause) leaveMatch(match);
-    } else if (code === 'Enter') startMatch(match.map, match.from);
+    } else if (code === 'Enter') {
+      if (!phones.room.phonesOnBothSides()) startMatch(match.map, match.from);
+    }
     else if (code === KEY_BINDINGS.pause) leaveMatch(match);
     return;
   }
@@ -426,7 +460,8 @@ function frame(now: number): void {
   last = now;
   fullscreenButton.hidden =
     mobile || !document.fullscreenEnabled || (screen.kind !== 'title' && screen.kind !== 'hotseat' && screen.kind !== 'phones');
-  phones.update(hostScreen(), phonesCanStart(), COLORS.players);
+  const countdown = updateReadyUp();
+  phones.update(hostScreen(), phonesCanStart(), COLORS.players, countdown);
   // Held upright, a phone-only match waits (the overlay asks them to rotate).
   if (screen.kind === 'match' && screen.from === 'mobile' && screen.state.phase !== 'matchOver' && inPortrait()) screen.paused = true;
   matchOverlay.setMode(overlayMode());
@@ -447,6 +482,9 @@ function frame(now: number): void {
     renderer.drawBackdrop();
   } else {
     const match = screen;
+    if (match.from !== 'hotseat' && match.from !== 'mobile') {
+      renderer.matchOverHint = phones.room.phonesOnBothSides() ? 'Tap Ready on both phones for a rematch · Esc for title' : 'Enter for a rematch · Esc for title';
+    }
     music.setPaused(match.paused);
     if (renderer.firstPerson) for (const i of [0, 1] as const) cameras[i].update(match.state, i, elapsed);
     if (!match.paused && hitstop > 0) {

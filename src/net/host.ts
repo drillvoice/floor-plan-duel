@@ -130,17 +130,18 @@ export class PhoneHost {
   }
 
   // Called every frame: drops silent phones and keeps each phone up to date.
-  update(screen: HostScreen, canStart: boolean, colors: readonly [string, string]): void {
+  update(screen: HostScreen, canStart: boolean, colors: readonly [string, string], countdown: number | null): void {
     const now = this.clock();
     for (const [conn, info] of this.conns) if (now - info.heardAt > TIMEOUT) this.drop(conn);
-    const summary = `${screen}|${canStart}`;
+    // Each new second of the countdown goes out straight away.
+    const summary = `${screen}|${canStart}|${countdown === null ? '' : Math.ceil(countdown)}`;
     if (summary === this.lastSent && now - this.sentAt < SEND_EVERY) return;
     this.lastSent = summary;
     this.sentAt = now;
     for (const [conn, info] of this.conns) {
       if (info.id === null || !conn.open) continue;
       try {
-        void conn.send(this.room.messageFor(info.id, screen, canStart, colors));
+        void conn.send(this.room.messageFor(info.id, screen, canStart, colors, countdown));
       } catch {
         // The channel is closing; the timeout will clear it up.
       }

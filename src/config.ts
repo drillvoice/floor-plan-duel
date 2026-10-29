@@ -226,6 +226,12 @@ export const CONFIG = {
 
 export type Config = typeof CONFIG;
 
+// Phones as controllers, outside the match itself.
+export const PHONE_LOBBY = {
+  // Seconds between every phone tapping Ready and the match starting.
+  readyCountdown: 3,
+};
+
 // Physical key codes (KeyboardEvent.code), so layouts like AZERTY still map
 // to the same physical positions. Shoot sits under the index finger and dodge
 // under the middle finger: F/G for the left hand, / and . for the right.

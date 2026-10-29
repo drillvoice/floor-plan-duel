@@ -7,6 +7,7 @@ import {
   parsePad,
   PhoneRoom,
   STALE_AFTER,
+  StartCountdown,
   type PadMessage,
 } from '../src/net/protocol';
 
@@ -26,8 +27,8 @@ function pad(id: string, over: Partial<PadMessage> = {}): PadMessage {
     shoot: false,
     shots: 0,
     dodges: 0,
-    starts: 0,
     pauses: 0,
+    ready: false,
     ...over,
   };
 }
@@ -68,7 +69,7 @@ describe('message checks', () => {
   it('round-trips a host message', () => {
     const room = new PhoneRoom();
     room.receive(pad('a'), 0);
-    const msg = room.messageFor('a', 'lobby', true, COLORS);
+    const msg = room.messageFor('a', 'lobby', true, COLORS, null);
     expect(parseHost(JSON.parse(JSON.stringify(msg)))).toEqual(msg);
     expect(parseHost({ ...msg, screen: 'nope' })).toBeNull();
   });
@@ -83,7 +84,7 @@ describe('phone room', () => {
     expect(room.slotOf('a')).toBe(0);
     expect(room.slotOf('b')).toBe(1);
     expect(room.slotOf('c')).toBeNull();
-    expect(room.messageFor('c', 'lobby', true, COLORS).taken).toEqual(['a', 'b']);
+    expect(room.messageFor('c', 'lobby', true, COLORS, null).taken).toEqual(['a', 'b']);
   });
 
   it('moves a phone to the side it asks for, only if free', () => {
@@ -142,13 +143,13 @@ describe('phone room', () => {
 
   it('does not replay presses from before it knew the phone, or after a reload', () => {
     const room = new PhoneRoom();
-    expect(room.receive(pad('a', { dodges: 4, starts: 2 }), 0)).toEqual([]);
+    expect(room.receive(pad('a', { dodges: 4, pauses: 2 }), 0)).toEqual([]);
     expect(room.sample(0, 0).dodge).toBe(false);
     // The phone page reloaded: counters restart, and its side is kept.
     expect(room.receive(pad('a', { boot: 'b2', seq: 1 }), 0)).toEqual([]);
     expect(room.slotOf('a')).toBe(0);
-    expect(room.receive(pad('a', { boot: 'b2', seq: 2, starts: 1 }), 0)).toEqual([{ type: 'start' }]);
-    expect(room.receive(pad('a', { boot: 'b2', seq: 3, starts: 1, pauses: 1 }), 0)).toEqual([{ type: 'pause' }]);
+    expect(room.receive(pad('a', { boot: 'b2', seq: 2, pauses: 1 }), 0)).toEqual([{ type: 'pause' }]);
+    expect(room.receive(pad('a', { boot: 'b2', seq: 3, pauses: 1 }), 0)).toEqual([]);
   });
 
   it('counts hits for the phone to buzz', () => {
@@ -157,6 +158,55 @@ describe('phone room', () => {
     room.buzz(0);
     room.buzz(0);
     room.buzz(1); // nobody there
-    expect(room.messageFor('a', 'match', false, COLORS).buzz).toBe(2);
+    expect(room.messageFor('a', 'match', false, COLORS, null).buzz).toBe(2);
+  });
+});
+
+describe('ready to start', () => {
+  it('waits for every phone on a side to be ready', () => {
+    const room = new PhoneRoom();
+    expect(room.everyoneReady()).toBe(false); // no phones at all
+    room.receive(pad('a', { ready: true }), 0);
+    expect(room.phonesOnBothSides()).toBe(false);
+    expect(room.everyoneReady()).toBe(true); // one phone against a bot or the keyboard
+    room.receive(pad('b'), 0);
+    expect(room.phonesOnBothSides()).toBe(true);
+    expect(room.everyoneReady()).toBe(false);
+    expect(room.messageFor('a', 'lobby', true, COLORS, null).ready).toEqual([true, false]);
+    room.receive(pad('b', { seq: 2, ready: true }), 0);
+    expect(room.everyoneReady()).toBe(true);
+  });
+
+  it('does not count a phone that is reconnecting as ready', () => {
+    const room = new PhoneRoom();
+    room.receive(pad('a', { ready: true }), 0);
+    room.receive(pad('b', { ready: true }), 0);
+    room.disconnect('b');
+    expect(room.phonesOnBothSides()).toBe(true);
+    expect(room.everyoneReady()).toBe(false);
+  });
+
+  it('counts down once everyone is ready, and starts over if someone backs out', () => {
+    const count = new StartCountdown(3);
+    expect(count.update(true, 10)).toBe(false);
+    expect(count.left(11)).toBe(2);
+    expect(count.update(false, 11)).toBe(false);
+    expect(count.left(11)).toBeNull();
+    expect(count.update(true, 12)).toBe(false);
+    expect(count.update(true, 14.9)).toBe(false);
+    expect(count.update(true, 15)).toBe(true);
+    // Done: it doesn't fire again until it has counted down afresh.
+    expect(count.left(15)).toBeNull();
+    expect(count.update(true, 15.1)).toBe(false);
+  });
+
+  it('checks the ready fields', () => {
+    const room = new PhoneRoom();
+    room.receive(pad('a'), 0);
+    const msg = room.messageFor('a', 'lobby', true, COLORS, 2.5);
+    expect(parseHost(JSON.parse(JSON.stringify(msg)))).toEqual(msg);
+    expect(parseHost({ ...msg, ready: [true] })).toBeNull();
+    expect(parseHost({ ...msg, countdown: -1 })).toBeNull();
+    expect(parsePad({ ...pad('a'), ready: 'yes' })).toBeNull();
   });
 });

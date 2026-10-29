@@ -15,6 +15,8 @@ export interface PhoneLobbyCallbacks {
   // Who plays a side with no phone: "Human (keyboard)" or "Bot · Normal".
   fallback(slot: PlayerIndex): string;
   colors: readonly string[];
+  // Seconds until the match starts, once every phone is ready.
+  countdown(): number | null;
 }
 
 export class PhoneLobby {
@@ -64,12 +66,16 @@ export class PhoneLobby {
     const local = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
     const seats = ([0, 1] as const).map((i) => {
       const phone = host.room.phoneIn(i);
-      if (phone) return { icon: phone.look || '📱', name: phone.name || `Phone ${i + 1}`, note: 'Phone connected' };
+      if (phone) return { icon: phone.look || '📱', name: phone.name || `Phone ${i + 1}`, note: host.room.isReady(i) ? 'Ready ✓' : 'Phone connected · not ready' };
       if (host.room.isWaitingFor(i)) return { icon: '📱', name: 'Reconnecting…', note: 'Waiting for the phone to come back' };
       return { icon: '', name: 'No phone yet', note: `Plays as ${this.callbacks.fallback(i)}` };
     });
+    // With a phone on each side, only their Ready buttons start the match.
+    const phonesOnly = host.room.phonesOnBothSides();
+    const left = this.callbacks.countdown();
+    const count = left === null ? null : Math.max(1, Math.ceil(left));
     // Rebuild only when something visible changed (keeps the QR code steady).
-    const key = JSON.stringify([host.status, url, local, seats]);
+    const key = JSON.stringify([host.status, url, local, seats, phonesOnly, count]);
     if (key === this.shown) return;
     this.shown = key;
 
@@ -99,7 +105,12 @@ export class PhoneLobby {
       ]);
     });
 
-    const startBtn = el('button', { className: 'primary', type: 'button', textContent: 'Start match ▶' });
+    const startBtn = el('button', {
+      className: 'primary',
+      type: 'button',
+      textContent: count !== null ? `Starting in ${count}…` : phonesOnly ? 'Tap Ready on both phones' : 'Start match ▶',
+      disabled: phonesOnly || count !== null,
+    });
     startBtn.addEventListener('click', () => this.callbacks.onStart());
     const backBtn = el('button', { type: 'button', textContent: 'Back' });
     backBtn.addEventListener('click', () => this.callbacks.onExit());
@@ -122,8 +133,35 @@ export class PhoneLobby {
         ]),
         el('div', { className: 'seats' }, seatCards),
         el('div', { className: 'actions' }, [startBtn, backBtn]),
-        el('p', { className: 'hint', textContent: 'Enter (or Start on a phone) to play · Esc to go back · phones stay connected between matches' }),
+        el('p', {
+          className: 'hint',
+          textContent: phonesOnly
+            ? 'The match starts when both phones are ready · Esc to go back · phones stay connected between matches'
+            : 'Enter (or Ready on a phone) to play · Esc to go back · phones stay connected between matches',
+        }),
       ]),
+    );
+  }
+}
+
+// Over the title and results screens: who's ready, and the countdown to the
+// start once everyone is.
+export class ReadyBanner {
+  private root = el('div', { id: 'ready-banner', hidden: true });
+  private shown = '';
+
+  constructor() {
+    document.body.append(this.root);
+  }
+
+  show(text: string | null, count: number | null): void {
+    const key = JSON.stringify([text, count]);
+    if (key === this.shown) return;
+    this.shown = key;
+    this.root.hidden = text === null && count === null;
+    this.root.replaceChildren(
+      ...(count === null ? [] : [el('div', { className: 'count', textContent: String(count) })]),
+      ...(text === null ? [] : [el('div', { textContent: text })]),
     );
   }
 }

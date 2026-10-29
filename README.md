@@ -65,7 +65,7 @@ With modifiers on, a slot-machine reel spins before each round and picks a rule 
 
 | Modifier | What changes |
 | --- | --- |
-| Giant Bullets | Bullets twice the size, but slower |
+| Giant Bullets | Bullets twice the size, but slower (they fly for longer, so their range is the same) |
 | Power-up Storm | A power-up every 1-2 s, twice as many on the map |
 | One-Hit Wonder | The first hit wins the round |
 | Speed Demons | Players and bullets move faster |

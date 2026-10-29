@@ -71,6 +71,13 @@ describe('round modifiers', () => {
     expect(configFor(base, null)).toBe(base);
   });
 
+  it('Giant Bullets are slower but still reach as far', () => {
+    const base = withModifiers(['giantBullets']);
+    const cfg = configFor(base, 'giantBullets');
+    expect(cfg.bullet.speed).toBeLessThan(base.bullet.speed);
+    expect(cfg.bullet.speed * cfg.bullet.lifetime).toBeCloseTo(base.bullet.speed * base.bullet.lifetime);
+  });
+
   it('One-Hit Wonder ends the round on the first hit', () => {
     const s = playing(withModifiers(['oneHitWonder']));
     placePlayer(s, 0, { x: 10, y: 12 });

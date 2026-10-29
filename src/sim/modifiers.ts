@@ -23,8 +23,12 @@ export const MODIFIERS: Record<ModifierId, Modifier> = {
     name: 'Giant Bullets',
     blurb: 'Huge, slow shots',
     apply: (c) => {
+      const slowdown = 0.7;
       c.bullet.radius *= 2;
-      c.bullet.speed *= 0.7;
+      c.bullet.speed *= slowdown;
+      // Slower bullets live longer by the same factor, so they still reach
+      // as far as normal ones.
+      c.bullet.lifetime /= slowdown;
     },
   },
   powerUpStorm: {

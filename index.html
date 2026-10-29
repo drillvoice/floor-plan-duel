@@ -431,6 +431,32 @@
       #phones button.primary:hover {
         background: #95e573;
       }
+      #ready-banner {
+        position: fixed;
+        top: 24px;
+        left: 50%;
+        transform: translateX(-50%);
+        max-width: calc(100% - 32px);
+        box-sizing: border-box;
+        padding: 10px 20px;
+        border-radius: 12px;
+        background: rgba(22, 24, 31, 0.85);
+        border: 1px solid #3a3f4d;
+        color: #f2efe8;
+        font: 600 18px system-ui, sans-serif;
+        text-align: center;
+        white-space: pre-wrap;
+        pointer-events: none;
+      }
+      #ready-banner[hidden] {
+        display: none;
+      }
+      #ready-banner .count {
+        font-size: 72px;
+        font-weight: 800;
+        line-height: 1;
+        color: #7ed957;
+      }
       #mobile {
         position: fixed;
         inset: 0;

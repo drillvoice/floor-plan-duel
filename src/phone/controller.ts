@@ -55,8 +55,8 @@ export function startController(joinParam: string): void {
     shoot: false,
     shots: 0,
     dodges: 0,
-    starts: 0,
     pauses: 0,
+    ready: false,
   };
 
   let code = normalizeRoomCode(joinParam);
@@ -66,6 +66,7 @@ export function startController(joinParam: string): void {
   let host: HostMessage | null = null;
   let heardAt = 0;
   let lastBuzz = -1;
+  let lastCount: number | null = null;
   let retry = 0;
 
   const root = el('div', { id: 'pad-root' });
@@ -146,6 +147,10 @@ export function startController(joinParam: string): void {
       link = 'connected';
       if (lastBuzz >= 0 && msg.buzz > lastBuzz) navigator.vibrate?.(msg.buzz - lastBuzz > 1 ? [120, 60, 120] : 160);
       lastBuzz = msg.buzz;
+      // A little tap on each second of the countdown to the start.
+      const count = msg.countdown === null ? null : Math.ceil(msg.countdown);
+      if (count !== null && count !== lastCount) navigator.vibrate?.(40);
+      lastCount = count;
       const changed = !wasConnected || JSON.stringify(msg) !== JSON.stringify(host);
       host = msg;
       if (changed) render();
@@ -281,11 +286,16 @@ export function startController(joinParam: string): void {
     const sides = ([0, 1] as const).map((i) => {
       const mine = h.slot === i;
       const holder = h.taken[i];
+      const ready = mine ? pad.ready : h.ready[i];
       const b = el('button', {
         type: 'button',
         className: `side${mine ? ' mine' : ''}`,
         disabled: !mine && holder !== null,
-      }, [el('strong', { textContent: `P${i + 1}` }), el('span', { textContent: mine ? 'You' : holder ?? 'Free' })]);
+      }, [
+        el('strong', { textContent: `P${i + 1}` }),
+        el('span', { textContent: mine ? 'You' : holder ?? 'Free' }),
+        el('span', { className: 'ready-mark', textContent: ready ? 'Ready ✓' : holder !== null || mine ? 'Not ready' : '' }),
+      ]);
       b.style.setProperty('--side', h.colors[i]);
       b.addEventListener('click', () => {
         pad.want = i;
@@ -318,29 +328,41 @@ export function startController(joinParam: string): void {
       if (e.key === 'Enter') name.blur();
     });
 
+    // Ready is a toggle: the match starts a few seconds after every phone
+    // is ready, so nobody can start it on their own.
     const start = el('button', {
       type: 'button',
-      className: 'primary',
-      textContent: h.screen === 'over' ? 'Rematch ▶' : 'Start match ▶',
-      disabled: !h.canStart,
+      className: `primary${pad.ready ? ' is-ready' : ''}`,
+      textContent: pad.ready ? 'Ready ✓ · tap to undo' : h.screen === 'over' ? 'Ready for a rematch' : "I'm ready!",
+      disabled: !h.canStart || h.slot === null,
     });
     start.addEventListener('click', () => {
-      pad.starts++;
+      pad.ready = !pad.ready;
       send();
+      render();
       // Full screen hides the browser bar during the match, where allowed.
-      void document.documentElement.requestFullscreen?.().catch(() => {});
+      if (pad.ready) void document.documentElement.requestFullscreen?.().catch(() => {});
     });
 
+    const other = h.slot === null ? null : h.slot === 0 ? 1 : 0;
+    const otherPhone = other === null ? null : h.taken[other];
     const note =
       h.slot === null
         ? 'Both sides are taken. You can play when someone leaves.'
         : h.screen === 'match' || h.screen === 'paused'
           ? 'A match is on.'
-          : h.screen === 'over'
-            ? 'Match over! Start a rematch from here or the big screen.'
-            : h.canStart
-              ? 'Start here or press Enter on the big screen.'
-              : 'Waiting for the big screen…';
+          : !h.canStart
+            ? 'Waiting for the big screen…'
+            : h.countdown !== null
+              ? 'Get ready!'
+              : pad.ready && otherPhone !== null
+                ? `Waiting for ${otherPhone || 'the other player'}…`
+                : otherPhone !== null
+                  ? "The match starts when you're both ready."
+                  : h.screen === 'over'
+                    ? 'Match over! Tap Ready for a rematch, or press Enter on the big screen.'
+                    : 'Tap Ready to start, or press Enter on the big screen.';
+    const countdown = h.countdown === null ? [] : [el('div', { className: 'countdown', textContent: String(Math.max(1, Math.ceil(h.countdown))) })];
 
     return el('div', { className: 'card' }, [
       el('div', { className: 'room muted', textContent: `Room ${code} · connected` }),
@@ -349,6 +371,7 @@ export function startController(joinParam: string): void {
       el('div', { className: 'look-row' }, [lookBtn(-1, '◀'), lookFace, lookBtn(1, '▶')]),
       name,
       start,
+      ...countdown,
       el('p', { className: 'muted', textContent: note }),
     ]);
   }
@@ -359,7 +382,7 @@ export function startController(joinParam: string): void {
     if (!code) next = 'join';
     else if (link !== 'connected' || !host) next = `status:${link}`;
     else if ((host.screen === 'match' || host.screen === 'paused') && host.slot !== null) next = `pad:${host.slot}:${host.screen}:${host.colors}`;
-    else next = `lobby:${JSON.stringify({ ...host, buzz: 0 })}`;
+    else next = `lobby:${JSON.stringify({ ...host, buzz: 0, countdown: host.countdown === null ? null : Math.ceil(host.countdown) })}:${pad.ready}`;
     // Rebuilding the pad mid-press would drop the touch, so only rebuild
     // when the screen really changes; the lobby keeps a half-typed name.
     if (next === view) return;
@@ -372,7 +395,11 @@ export function startController(joinParam: string): void {
     const enteringPad = next.startsWith('pad:') && !view.startsWith('pad:');
     view = next;
     if (!next.startsWith('pad:')) release();
-    if (enteringPad) release();
+    if (enteringPad) {
+      release();
+      // The match started: be not-ready again for the next one.
+      pad.ready = false;
+    }
     if (!code) root.replaceChildren(joinForm());
     else if (link !== 'connected' || !host) root.replaceChildren(statusCard());
     else if ((host.screen === 'match' || host.screen === 'paused') && host.slot !== null) root.replaceChildren(buildPad(host, host.slot));
@@ -476,6 +503,21 @@ body.pad-page {
 }
 #pad-root .side.mine strong {
   color: #16181f;
+}
+#pad-root .ready-mark {
+  font-size: 13px;
+  opacity: 0.8;
+}
+#pad-root button.primary.is-ready {
+  background: transparent;
+  color: #7ed957;
+}
+#pad-root .countdown {
+  text-align: center;
+  font-size: 72px;
+  font-weight: 800;
+  line-height: 1;
+  color: #7ed957;
 }
 #pad-root .look-row {
   display: flex;

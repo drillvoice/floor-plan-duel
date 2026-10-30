@@ -293,7 +293,7 @@ export function startController(joinParam: string): void {
         disabled: !mine && holder !== null,
       }, [
         el('strong', { textContent: `P${i + 1}` }),
-        el('span', { textContent: mine ? 'You' : holder ?? 'Free' }),
+        el('span', { textContent: mine ? 'You' : holder === null ? 'Free' : holder || 'Another phone' }),
         el('span', { className: 'ready-mark', textContent: ready ? 'Ready ✓' : holder !== null || mine ? 'Not ready' : '' }),
       ]);
       b.style.setProperty('--side', h.colors[i]);

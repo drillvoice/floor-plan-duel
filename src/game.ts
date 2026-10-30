@@ -483,6 +483,14 @@ function frame(now: number): void {
   } else {
     const match = screen;
     if (match.from !== 'hotseat' && match.from !== 'mobile') {
+      // A phone that joins mid-match (say, after the first player readied up
+      // alone) takes its side over from the keyboard or bot straight away,
+      // rather than holding a joystick that does nothing until the next match.
+      if (match.state.phase !== 'matchOver' && ([0, 1] as const).some((i) => phones.room.phoneIn(i) && inputs[i] !== phonePlayer)) {
+        inputs = [phones.room.phoneIn(0) ? phonePlayer : inputs[0], phones.room.phoneIn(1) ? phonePlayer : inputs[1]];
+        renderer.looks = sideLooks();
+        renderer.names = sideNames();
+      }
       renderer.matchOverHint = phones.room.phonesOnBothSides() ? 'Tap Ready on both phones for a rematch · Esc for title' : 'Enter for a rematch · Esc for title';
     }
     music.setPaused(match.paused);

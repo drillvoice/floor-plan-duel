@@ -184,7 +184,9 @@ export class PhoneRoom {
   }
 
   // Gives the phone the side it wants if it can, else keeps it where it is,
-  // else any free side.
+  // else an empty side, else one held for a phone that has dropped. Taking
+  // an empty side first means a second player joining while the first one's
+  // screen is locked doesn't take their side and swap them over.
   private seat(id: string, want: PlayerIndex | null): void {
     const current = this.slotOf(id);
     if (want !== null && want !== current && this.isFree(want)) {
@@ -193,7 +195,7 @@ export class PhoneRoom {
       return;
     }
     if (current !== null) return;
-    const free = ([0, 1] as const).find((i) => this.isFree(i));
+    const free = ([0, 1] as const).find((i) => this.slots[i] === null) ?? ([0, 1] as const).find((i) => this.isFree(i));
     if (free !== undefined) this.slots[free] = id;
   }
 
